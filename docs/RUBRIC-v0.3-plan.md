@@ -1,8 +1,10 @@
 # Rubric expansion plan — v0.3 (13 → 30 criteria)
 
-Status: **landing incrementally.** Shipped: SPEC-03, VER-05, ACC-03, ACC-04 (`v0.3`); VER-06, VER-07,
-EVO-03 (`v0.4`). Remaining: SPEC-04/05, BND-03/04/05, EVO-02, and the git-history domain (PRV-03/04/05,
-ACC-05) behind the determinism rules below. This is the output of a criteria-authoring pass:
+Status: **27 of the planned ~30 shipped.** Landed: SPEC-03/04/05, VER-05/06/07, BND-03, ACC-03/04/05,
+EVO-02/03, PRV-03/05 (through `v0.6`). **Deferred with reasons** (see CHANGELOG): PRV-04 (root-majority
+over-fires on normally-bootstrapped repos — needs to also require no real subsequent history); BND-04
+(stub bodies) and BND-05 (unused exports) need AST-backed body-delimitation / a reference index rather
+than regex. This is the output of a criteria-authoring pass:
 each domain was mined for "what has an agent done that a careful human wouldn't," then every candidate
 was run against the six hard gates (binary · deterministic · no vendor · surface-safe · not security ·
 from scar tissue). What survived is below. It ships incrementally — each landed batch bumps

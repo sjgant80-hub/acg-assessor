@@ -3,6 +3,31 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.6
+
+The git-history / provenance domain (24 → 27 criteria), behind a **determinism harness**: git is read
+*only* for commits reachable from HEAD, and only counts, subjects, and author strings (for matching) are
+read — **never a commit hash, timestamp, or raw identity enters the verdict.** Verified: this repo
+assessed twice yields the same hash. The criteria are N/A when `.git` is absent or `git` is unavailable,
+so the tool still runs without git.
+
+- **PRV-03** (core) — a non-trivial repository has more than one commit. *A single-commit repo has no
+  record of how it was built.*
+- **PRV-05** — fewer than a quarter of commits carry an empty or throwaway message (`wip`/`fix`/`update`…).
+- **ACC-05** — no commit author is a known placeholder identity (`Your Name`, `root@localhost`, …).
+
+**Deferred honestly** (each for a real reason, not omission):
+- **PRV-04** (root-commit-majority) — running it flagged *this* repository, which was scaffolded in a
+  substantial first commit and then genuinely evolved across many described commits. Pure root-vs-HEAD
+  majority over-fires on normally-bootstrapped repos; it needs to also require the *absence* of real
+  subsequent history. Held for refinement — the rubric changing because it met a real repo and lost.
+- **BND-04** (not-implemented stub bodies) and **BND-05** (unused-export share) need real function-body
+  delimitation and a code-region reference index; a regex proxy would false-positive on what should be a
+  core criterion. Held for an AST-backed batch.
+
+Self-assessment stays PASS: 10/10 core, 15/15 non-core (100%). `SPEC_VERSION` → v0.6, re-locked. The
+rubric is now 27 criteria across all six domains.
+
 ## assessor-v0.5
 
 Third expansion batch (20 → 24 criteria), the no-git remainder — all deterministic against the walk.

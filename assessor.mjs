@@ -19,6 +19,7 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, extname, relative, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
@@ -26,7 +27,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.5';
+const SPEC_VERSION = 'assessor-v0.6';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -68,6 +69,26 @@ function resolveRel(dir, target) {
 const DEFECT_MARKERS = ['FIXME', 'HACK', 'XXX', 'BUG', 'BROKEN', 'WIP'];
 const DEFECT_RE = new RegExp('(?:^|\\s)(?:\\/\\/|#|--|\\/\\*|\\*)\\s*(' + DEFECT_MARKERS.join('|') + ')\\b');
 const ADR_UNFILLED = new Set(['', 'todo', 'tbd', 'tba', '<status>', '[status]', 'n/a', 'xxx', '...']);
+
+// Frozen git-provenance lists (PRV-05, ACC-05). ASCII case-folded, closed.
+const THROWAWAY_SUBJECT = /^(wip|updates?|fix(es|ed)?|changes?|commit|misc|stuff|temp|tmp|minor|tweaks?|\.+)$/i;
+const PLACEHOLDER_NAMES = new Set(['your name', 'name', 'user', 'unknown', 'root', 'admin']);
+const PLACEHOLDER_EMAILS = new Set(['you@example.com', 'user@example.com', 'root@localhost', 'admin@localhost', 'you@example.org', 'me@example.com']);
+
+// Read git history DETERMINISTICALLY: reachable-from-HEAD only, and only COUNTS/SUBJECTS/AUTHOR strings
+// used for matching — never a commit hash, timestamp, or raw identity enters the verdict. N/A if no git.
+function gitData(root) {
+  const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 24 });
+  try {
+    git(['rev-parse', '--git-dir']);                                 // throws if not a work tree
+    const commitCount = parseInt(git(['rev-list', '--count', 'HEAD']).trim(), 10);
+    const subjects = git(['log', '--format=%s', 'HEAD']).split('\n').filter(Boolean);
+    const authors = git(['log', '--format=%an%x00%ae', 'HEAD']).split('\n').filter(Boolean)
+      .map(l => { const [n, e] = l.split('\x00'); return { name: (n || '').trim().toLowerCase(), email: (e || '').trim().toLowerCase() }; });
+    const fileCount = git(['ls-tree', '-r', '--name-only', 'HEAD']).split('\n').filter(Boolean).length;
+    return { ok: true, commitCount, subjects, authors, fileCount };
+  } catch { return { ok: false }; }
+}
 
 // .assessorignore  ·  gitignore-style prefixes the assessor must not scan (test
 // fixtures, vendored corpora). Lets the assessor assess its OWN source without
@@ -124,6 +145,7 @@ function gather(root) {
     pkgAuthor: null, pkgDescription: null, testImports: [],
     manifestRefs: [], buildOutputs: new Set(), defectMarkers: []
   };
+  ev.git = gitData(root);   // reachable-from-HEAD counts/subjects/authors only (PRV-03/05, ACC-05)
 
   // exact-case path set (files + ancestor dirs) — link/entrypoint resolution compares against THIS,
   // never fs.existsSync, so a case-insensitive filesystem cannot make the verdict OS-dependent.
@@ -521,6 +543,18 @@ const CRITERIA = [
         : { verdict: NOT_MET, evidence: `placeholder ownership value: ${bad.join('; ')}` };
     }
   },
+  {
+    id: 'ACC-05', domain: 'human accountability', core: false, tell: 'ECHOED',
+    criterion: 'No commit author identity is a known unconfigured-git or scaffold placeholder.',
+    why: 'A commit authored by "Your Name" or an unconfigured default means nobody put their name to the change.',
+    assess: ev => {
+      if (!ev.git.ok || ev.git.authors.length === 0) return { verdict: NA, evidence: 'no readable git history', note: 'PRV-02 covers .git presence; git unavailable or no commits' };
+      const bad = ev.git.authors.filter(a => PLACEHOLDER_NAMES.has(a.name) || PLACEHOLDER_EMAILS.has(a.email) || /@(localhost|[\w.-]+\.local|[\w.-]*\(none\))$/.test(a.email)).length;
+      return bad === 0
+        ? { verdict: MET, evidence: `${ev.git.authors.length} commit author identity value(s), none placeholder` }
+        : { verdict: NOT_MET, evidence: `${bad} commit(s) with a placeholder author identity` };
+    }
+  },
 
   // ---- EVOLVABILITY -------------------------------------------------------
   {
@@ -575,6 +609,31 @@ const CRITERIA = [
     assess: ev => existsSync(join(ev.root, '.git'))
       ? { verdict: MET, evidence: '.git present' }
       : { verdict: NOT_MET, evidence: 'no .git directory — history unavailable', note: 'N/A if assessing an exported archive; assessor must justify' }
+  },
+  {
+    id: 'PRV-03', domain: 'provenance', core: true, tell: 'ECHOED',
+    criterion: 'A non-trivial repository has more than one commit in its history.',
+    why: 'A repository with a single commit has no record of how it was built — the agent dumped its output and called it done.',
+    assess: ev => {
+      if (!ev.git.ok) return { verdict: NA, evidence: 'no readable git history', note: 'PRV-02 covers .git presence; git unavailable or no commits' };
+      if (ev.git.fileCount <= 3) return { verdict: NA, evidence: `only ${ev.git.fileCount} tracked file(s)`, note: 'too small to expect a commit history' };
+      return ev.git.commitCount >= 2
+        ? { verdict: MET, evidence: `${ev.git.commitCount} commits reachable from HEAD` }
+        : { verdict: NOT_MET, evidence: 'a single commit — no development history' };
+    }
+  },
+  {
+    id: 'PRV-05', domain: 'provenance', core: false, tell: 'COLLAPSED',
+    criterion: 'Fewer than a quarter of commits carry an empty or throwaway message.',
+    why: 'Bulk "wip"/"fix"/"update" subjects are the signature of commits generated to satisfy a hook rather than to record a decision.',
+    assess: ev => {
+      if (!ev.git.ok || ev.git.subjects.length === 0) return { verdict: NA, evidence: 'no readable git history', note: 'nothing to assess' };
+      const n = ev.git.subjects.length;
+      const bad = ev.git.subjects.filter(s => s.trim() === '' || THROWAWAY_SUBJECT.test(s.trim())).length;
+      return bad / n < 0.25
+        ? { verdict: MET, evidence: `${bad}/${n} commits have a throwaway message` }
+        : { verdict: NOT_MET, evidence: `${bad}/${n} commits have an empty or throwaway message` };
+    }
   }
 ];
 
