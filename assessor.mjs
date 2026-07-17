@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.4';
+const SPEC_VERSION = 'assessor-v0.5';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -62,6 +62,12 @@ function resolveRel(dir, target) {
   }
   return stack.join('/');
 }
+
+// EVO-02 defect markers — built into the regex from an array, so THIS file contains no literal
+// comment-delimiter-plus-marker sequence that would flag itself (the REV-04/REV-05 lesson).
+const DEFECT_MARKERS = ['FIXME', 'HACK', 'XXX', 'BUG', 'BROKEN', 'WIP'];
+const DEFECT_RE = new RegExp('(?:^|\\s)(?:\\/\\/|#|--|\\/\\*|\\*)\\s*(' + DEFECT_MARKERS.join('|') + ')\\b');
+const ADR_UNFILLED = new Set(['', 'todo', 'tbd', 'tba', '<status>', '[status]', 'n/a', 'xxx', '...']);
 
 // .assessorignore  ·  gitignore-style prefixes the assessor must not scan (test
 // fixtures, vendored corpora). Lets the assessor assess its OWN source without
@@ -115,7 +121,8 @@ function gather(root) {
     hasSpec:    files.some(f => /^(spec|SPEC|design|DESIGN|adr|ADR|rfc|RFC)/.test(f.name) || /\/(docs?|adr|rfc)\//i.test(f.rel)),
     hasAgentCfg:files.some(f => /^(\.cursorrules|claude\.md|CLAUDE\.md|\.aider\.conf\.yml|copilot-instructions\.md|AGENTS?\.md)$/i.test(f.name)),
     deps: [], usedDeps: new Set(),
-    pkgAuthor: null, pkgDescription: null, testImports: []
+    pkgAuthor: null, pkgDescription: null, testImports: [],
+    manifestRefs: [], buildOutputs: new Set(), defectMarkers: []
   };
 
   // exact-case path set (files + ancestor dirs) — link/entrypoint resolution compares against THIS,
@@ -155,6 +162,32 @@ function gather(root) {
     ev.assertions += (t.match(/\b(expect|assert\w*)\s*[(.]|\.should\b|\bt\.(Error|Fatal|Errorf|Fatalf)\b/g) || []).length;
   }
 
+  // decision records + their Status (SPEC-04)
+  ev.adrFiles = files.filter(f => /(^|\/)(adr|decisions)(\/|$)/i.test(f.rel) || /^(adr[-_])?\d{3,4}[-_].*\.(md|markdown)$/i.test(f.name));
+  ev.adrBad = [];
+  for (const f of ev.adrFiles) {
+    const t = read(f);
+    let status = (t.match(/^\s*status\s*:\s*(.+)$/im) || [])[1];
+    if (status == null) {
+      const ls = t.split('\n'); const idx = ls.findIndex(l => /^#{1,6}\s+status\s*$/i.test(l.trim()));
+      if (idx >= 0) status = ls.slice(idx + 1).map(l => l.trim()).find(Boolean) || '';
+    }
+    if (status == null || ADR_UNFILLED.has(status.trim().toLowerCase()))
+      ev.adrBad.push({ file: f.rel, line: '', text: `status: ${status == null ? '(missing)' : status.trim() || '(blank)'}` });
+  }
+
+  // run commands the reader is told to run (SPEC-05) — ONLY from CODE regions of README-family docs,
+  // never prose ("make a decision") and never design docs that describe commands as examples.
+  ev.docRunCmds = [];
+  for (const f of ev.docFiles.filter(f => /^(readme|install|usage|contributing)|getting.?started/i.test(f.name))) {
+    const code = [...read(f).matchAll(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]+`/g)].map(m => m[0]).join('\n');
+    for (const m of code.matchAll(/(?:npm|yarn|pnpm)\s+run\s+([A-Za-z0-9:_-]+)/g)) ev.docRunCmds.push({ file: f.rel, kind: 'script', name: m[1] });
+    for (const m of code.matchAll(/(?:^|[\s`$])make\s+([A-Za-z0-9:_-]+)/gm)) ev.docRunCmds.push({ file: f.rel, kind: 'make', name: m[1] });
+  }
+  ev.makeTargets = new Set();
+  const mkFile = files.find(f => /^(makefile|gnumakefile)$/i.test(f.name));
+  if (mkFile) for (const m of read(mkFile).matchAll(/^([A-Za-z0-9][A-Za-z0-9:_-]*)\s*:/gm)) if (m[1].toLowerCase() !== '.phony') ev.makeTargets.add(m[1]);
+
   // package.json declared deps + ownership fields
   const pkgFile = files.find(f => f.name === 'package.json');
   if (pkgFile) {
@@ -164,6 +197,19 @@ function gather(root) {
       ev.pkgScripts = Object.keys(pkg.scripts || {}).sort();
       ev.pkgAuthor = typeof pkg.author === 'string' ? pkg.author : (pkg.author && pkg.author.name) || null;
       ev.pkgDescription = typeof pkg.description === 'string' ? pkg.description : null;
+      // BND-03: file paths the manifest wires up (entrypoints + script targets) + declared build outputs
+      const addRef = v => { if (typeof v === 'string') { const p = v.replace(/^\.\//, ''); if (/^[\w][\w./-]*\.\w+$/.test(p)) ev.manifestRefs.push(p); } };
+      for (const k of ['main', 'module', 'types', 'browser']) addRef(pkg[k]);
+      const leaves = o => { if (typeof o === 'string') addRef(o); else if (o && typeof o === 'object') Object.values(o).forEach(leaves); };
+      leaves(pkg.bin); leaves(pkg.exports);
+      for (const cmd of Object.values(pkg.scripts || {})) {
+        const toks = String(cmd).split(/\s+/);
+        toks.forEach((tok, i) => {
+          const p = tok.replace(/^\.\//, '');
+          if (/^[\w][\w./-]*\.(mjs|cjs|js|ts|tsx|jsx|json|py|go|rs)$/.test(p)) ev.manifestRefs.push(p);
+          if (['>', '--outfile', '--out-dir', '--out', '-o', '--dist-dir'].includes(tok) && toks[i + 1]) ev.buildOutputs.add(toks[i + 1].replace(/^\.\//, ''));
+        });
+      }
     } catch { /* malformed package.json is itself a finding, handled by SPEC-01 */ }
   }
 
@@ -189,6 +235,8 @@ function gather(root) {
         ev.todos.push({ file: f.rel, line: i + 1, text: line.trim().slice(0, 100) });
       if (/\b(it|test|describe)\.(skip|todo)\b|\bxit\b|\bxdescribe\b|@pytest\.mark\.skip|t\.Skip\(/.test(line))
         ev.skips.push({ file: f.rel, line: i + 1, text: line.trim().slice(0, 100) });
+      if (!tests.includes(f) && DEFECT_RE.test(line))    // EVO-02: defect marker leading a source comment
+        ev.defectMarkers.push({ file: f.rel, line: i + 1, text: line.trim().slice(0, 80) });
     });
 
     // dependency usage
@@ -291,6 +339,30 @@ const CRITERIA = [
         : { verdict: NOT_MET, evidence: `${broken.length} documentation link(s) resolve to nothing`, sample: broken.slice(0, 5) };
     }
   },
+  {
+    id: 'SPEC-04', domain: 'specification integrity', core: false, tell: 'COLLAPSED',
+    criterion: 'Every architecture decision record declares a concrete, non-placeholder Status.',
+    why: 'Agents generate decision records from a template and leave the Status blank, so a reader cannot tell whether a documented decision is proposed, accepted, or superseded.',
+    assess: ev => {
+      if (ev.adrFiles.length === 0) return { verdict: NA, evidence: 'no decision records found', note: 'no ADRs to check' };
+      return ev.adrBad.length === 0
+        ? { verdict: MET, evidence: `all ${ev.adrFiles.length} decision record(s) declare a Status` }
+        : { verdict: NOT_MET, evidence: `${ev.adrBad.length} decision record(s) with a missing or placeholder Status`, sample: ev.adrBad.slice(0, 3) };
+    }
+  },
+  {
+    id: 'SPEC-05', domain: 'specification integrity', core: false, tell: 'COLLAPSED',
+    criterion: "Every run command referenced in documentation is defined in the project's script/target manifest.",
+    why: 'Agents document build and run commands that were never wired up, so following the README fails.',
+    assess: ev => {
+      if (!ev.docRunCmds || ev.docRunCmds.length === 0) return { verdict: NA, evidence: 'no run commands referenced in docs', note: 'nothing to check' };
+      const scripts = new Set(ev.pkgScripts || []);
+      const missing = ev.docRunCmds.filter(c => c.kind === 'make' ? !ev.makeTargets.has(c.name) : !scripts.has(c.name));
+      return missing.length === 0
+        ? { verdict: MET, evidence: `all ${ev.docRunCmds.length} documented run command(s) are defined` }
+        : { verdict: NOT_MET, evidence: `${missing.length} documented run command(s) not defined in the manifest`, sample: missing.slice(0, 3).map(c => ({ file: c.file, line: '', text: `${c.kind === 'make' ? 'make' : 'run'} ${c.name}` })) };
+    }
+  },
 
   // ---- VERIFICATION INTEGRITY --------------------------------------------
   {
@@ -391,6 +463,20 @@ const CRITERIA = [
         : { verdict: NOT_MET, evidence: `${ev.unusedDeps.length} declared but unreferenced: ${ev.unusedDeps.slice(0, 8).join(', ')}` };
     }
   },
+  {
+    id: 'BND-03', domain: 'agent boundaries', core: true, tell: 'INERT',
+    criterion: 'Every file path the package manifest wires up (entrypoints and script targets) resolves to a file, unless it is a declared build output.',
+    why: 'Agents point main/bin or a script at a file they never generated, so the wired-up entrypoint is dead on arrival.',
+    assess: ev => {
+      if (!ev.hasPkg) return { verdict: NA, evidence: 'no package.json', note: 'no manifest to resolve' };
+      const refs = [...new Set(ev.manifestRefs)];
+      if (refs.length === 0) return { verdict: MET, evidence: 'no manifest file references to resolve' };
+      const unresolved = refs.filter(p => !ev.pathSet.has(p) && !ev.buildOutputs.has(p) && !/^(dist|build|out|lib)\//.test(p));
+      return unresolved.length === 0
+        ? { verdict: MET, evidence: `all ${refs.length} manifest path(s) resolve` }
+        : { verdict: NOT_MET, evidence: `${unresolved.length} manifest path(s) resolve to nothing: ${unresolved.slice(0, 4).join(', ')}` };
+    }
+  },
 
   // ---- HUMAN ACCOUNTABILITY -----------------------------------------------
   {
@@ -459,6 +545,14 @@ const CRITERIA = [
         ? { verdict: MET, evidence: 'no eight-line source block repeated' }
         : { verdict: NOT_MET, evidence: `${ev.longDupes.length} eight-line block(s) duplicated (worst: ${ev.longDupes[0].count}x)`, sample: ev.longDupes.slice(0, 3) };
     }
+  },
+  {
+    id: 'EVO-02', domain: 'evolvability', core: false, tell: 'COLLAPSED',
+    criterion: 'No source comment carries a defect marker (FIXME, HACK, XXX, BUG, BROKEN, WIP) as its leading token.',
+    why: 'A defect the author admitted in a comment and did not fix is a known hazard shipped in place; agents leave these behind routinely. Distinct from SPEC-02, which measures TODO-family density.',
+    assess: ev => (ev.defectMarkers || []).length === 0
+      ? { verdict: MET, evidence: 'no defect markers leading source comments' }
+      : { verdict: NOT_MET, evidence: `${ev.defectMarkers.length} defect marker(s) in source comments`, sample: ev.defectMarkers.slice(0, 3) }
   },
 
   // ---- PROVENANCE ---------------------------------------------------------

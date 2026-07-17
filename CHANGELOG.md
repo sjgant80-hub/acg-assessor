@@ -3,6 +3,25 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.5
+
+Third expansion batch (20 → 24 criteria), the no-git remainder — all deterministic against the walk.
+
+- **SPEC-04** — every architecture decision record declares a concrete, non-placeholder Status.
+- **SPEC-05** — every run command in a README's code blocks is a defined script or make target.
+- **BND-03** (core) — every file path the manifest wires up (entrypoints, script targets) resolves to a
+  file, unless it is a declared build output. *Agents point `main`/`bin` at a file they never generated.*
+- **EVO-02** — no source comment leads with a defect marker (FIXME/HACK/XXX/BUG/BROKEN/WIP). Distinct
+  from SPEC-02's TODO-family density; the marker set is built from an array so the detector can't flag
+  its own definition.
+
+**REV-06 — SPEC-05 read prose and doc-examples as commands (found by self-assessment).** Its first run
+flagged English prose ("make **the** …") and the plan doc's own example commands (`npm run build`) as
+undefined. Run commands are now extracted only from **code regions of README-family docs** — not prose,
+not design docs that merely describe commands. The fourth self-found fix (REV-03/04/05/06).
+
+Self-assessment stays PASS: 9/9 core, 13/13 non-core (100%). `SPEC_VERSION` → v0.5, re-locked.
+
 ## assessor-v0.4
 
 Second expansion batch (17 → 20 criteria), still zero-git and deterministic against the static walk.
