@@ -1,0 +1,10 @@
+{
+  "name": "inventory-demo",
+  "version": "1.0.0",
+  "description": "A tiny dependency-free inventory library (assessor clean-demo fixture).",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

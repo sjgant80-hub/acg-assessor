@@ -1,0 +1,19 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history so PRV-02 (history present) is meaningful
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: criteria fingerprint matches the spec version
+        run: node scripts/check-spec-version.mjs
+      - name: tests (determinism + corpus + self-assessment)
+        run: node --test tests/assessor.test.mjs
+      - name: the assessor passes its own rubric
+        run: node assessor.mjs .

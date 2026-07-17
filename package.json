@@ -1,0 +1,19 @@
+{
+  "name": "acg-assessor",
+  "version": "0.2.0",
+  "description": "Deterministic rubric assessment for AI-assisted codebases. Same repository -> same verdict -> same hash.",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "acg-assessor": "assessor.mjs" },
+  "scripts": {
+    "assess": "node assessor.mjs",
+    "self": "node assessor.mjs .",
+    "test": "node --test tests/assessor.test.mjs",
+    "check-spec": "node scripts/check-spec-version.mjs",
+    "demo:clean": "node assessor.mjs test-corpus/clean-demo",
+    "demo:slop": "node assessor.mjs test-corpus/slop-demo"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["assessment", "rubric", "deterministic", "code-quality", "ai-assisted", "audit"],
+  "repository": { "type": "git", "url": "https://github.com/ai-craftspeople-guild/acg-assessor" }
+}

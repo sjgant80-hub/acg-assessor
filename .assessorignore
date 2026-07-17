@@ -1,0 +1,4 @@
+# Fixtures and vendored corpora the assessor must not treat as product code.
+# The demo repos are deliberately broken (slop-demo) or standalone (clean-demo);
+# they are the regression suite, not this repository's own source.
+test-corpus
