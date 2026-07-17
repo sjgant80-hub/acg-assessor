@@ -1,6 +1,7 @@
 # Rubric expansion plan — v0.3 (13 → 30 criteria)
 
-Status: **designed, vetted, not yet implemented.** This is the output of a criteria-authoring pass:
+Status: **first batch landed** (SPEC-03, VER-05, ACC-03, ACC-04 shipped in `assessor-v0.3`); the rest
+designed and vetted, landing in later batches. This is the output of a criteria-authoring pass:
 each domain was mined for "what has an agent done that a careful human wouldn't," then every candidate
 was run against the six hard gates (binary · deterministic · no vendor · surface-safe · not security ·
 from scar tissue). What survived is below. It ships incrementally — each landed batch bumps

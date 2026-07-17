@@ -3,6 +3,31 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.3
+
+First batch of the rubric expansion (13 → 17 criteria), the zero-risk, no-git group. Each is
+deterministic against a static walk; the corpus and self-assessment stayed green throughout.
+
+- **SPEC-03** (non-core) — every relative documentation link/image target resolves to a path in the
+  repository. *Agents link to modules and guides they never created, or that were renamed.* Targets
+  resolve against the exact-case walked path set, never `existsSync` (a case-insensitive filesystem
+  would otherwise make the verdict OS-dependent).
+- **VER-05** (core) — the test suite imports at least one module from the project's own source tree.
+  *A suite that imports only the framework is green and proves nothing.*
+- **ACC-03** (core) — the README carries no token from a frozen scaffold-placeholder list.
+- **ACC-04** (non-core) — manifest `author`/`description`, if present, are not known scaffold
+  placeholders. Placeholder lists are frozen and closed — an open list lets two assessors diverge.
+
+**REV-05 — the link checker flagged its own example (found by self-assessment).** SPEC-03's first run
+against this repo failed on a `[text](target)` written *as an example inside a code span* in the v0.3
+plan doc. A link inside a code fence or `` `span` `` is an example, not a link; the checker now strips
+code before extracting links (standard link-checker behaviour). Same pattern as REV-04 — a finding the
+tool made against itself, fixed in the open.
+
+Remaining v0.3 criteria (BND-03/04/05, EVO-02/03, SPEC-04/05, VER-06/07) and the git-history domain
+(PRV-03/04/05, ACC-05) are designed in `docs/RUBRIC-v0.3-plan.md` and land in later batches — the git
+ones behind their determinism rules.
+
 ## assessor-v0.2
 
 The version that submits to its own rubric. `v0.1` failed its own standard (1 of 3 core criteria);

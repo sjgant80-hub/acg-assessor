@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.2';
+const SPEC_VERSION = 'assessor-v0.3';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -51,6 +51,17 @@ const TELLS = {
 // ---------------------------------------------------------------------------
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'vendor']);
 const CODE_EXT  = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.go', '.rs', '.java', '.rb']);
+const DOC_EXT   = new Set(['.md', '.markdown', '.mdx', '.rst', '.adoc', '.txt']);
+
+// resolve a doc-relative link target to a normalised repo path (forward slashes, '..'/'.' collapsed)
+function resolveRel(dir, target) {
+  const stack = [];
+  for (const p of (dir ? dir.split('/') : []).concat(target.split('/'))) {
+    if (p === '' || p === '.') continue;
+    if (p === '..') stack.pop(); else stack.push(p);
+  }
+  return stack.join('/');
+}
 
 // .assessorignore  ·  gitignore-style prefixes the assessor must not scan (test
 // fixtures, vendored corpora). Lets the assessor assess its OWN source without
@@ -103,16 +114,43 @@ function gather(root) {
     hasPkg:     files.some(f => f.name === 'package.json'),
     hasSpec:    files.some(f => /^(spec|SPEC|design|DESIGN|adr|ADR|rfc|RFC)/.test(f.name) || /\/(docs?|adr|rfc)\//i.test(f.rel)),
     hasAgentCfg:files.some(f => /^(\.cursorrules|claude\.md|CLAUDE\.md|\.aider\.conf\.yml|copilot-instructions\.md|AGENTS?\.md)$/i.test(f.name)),
-    deps: [], usedDeps: new Set()
+    deps: [], usedDeps: new Set(),
+    pkgAuthor: null, pkgDescription: null, testImports: []
   };
 
-  // package.json declared deps
+  // exact-case path set (files + ancestor dirs) — link/entrypoint resolution compares against THIS,
+  // never fs.existsSync, so a case-insensitive filesystem cannot make the verdict OS-dependent.
+  ev.pathSet = new Set();
+  for (const f of files) {
+    ev.pathSet.add(f.rel);
+    const parts = f.rel.split('/');
+    for (let i = 1; i < parts.length; i++) ev.pathSet.add(parts.slice(0, i).join('/'));
+  }
+
+  // documentation files + their inline markdown link/image targets (reference-style links ignored)
+  ev.docFiles = files.filter(f => DOC_EXT.has(f.ext) || /^readme/i.test(f.name));
+  ev.docLinks = [];
+  for (const f of ev.docFiles) {
+    // strip code first — a [text](target) inside a code fence or `span` is an EXAMPLE, not a link
+    const text = read(f)
+      .replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '')
+      .replace(/`[^`]*`/g, '');
+    const re = /!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+    let m;
+    while ((m = re.exec(text))) ev.docLinks.push({ file: f.rel, target: m[1].replace(/^<|>$/g, '') });
+  }
+  const readmeFile = files.find(f => /^readme/i.test(f.name));
+  ev.readmeText = readmeFile ? read(readmeFile).toLowerCase() : null;
+
+  // package.json declared deps + ownership fields
   const pkgFile = files.find(f => f.name === 'package.json');
   if (pkgFile) {
     try {
       const pkg = JSON.parse(read(pkgFile));
       ev.deps = Object.keys(pkg.dependencies || {}).sort();
       ev.pkgScripts = Object.keys(pkg.scripts || {}).sort();
+      ev.pkgAuthor = typeof pkg.author === 'string' ? pkg.author : (pkg.author && pkg.author.name) || null;
+      ev.pkgDescription = typeof pkg.description === 'string' ? pkg.description : null;
     } catch { /* malformed package.json is itself a finding, handled by SPEC-01 */ }
   }
 
@@ -122,6 +160,13 @@ function gather(root) {
     const text = read(f);
     const lines = text.split('\n');
     ev.totalLines += lines.length;
+
+    // test-file import/require specifiers — for VER-05 (does the suite import its own source?)
+    if (tests.includes(f)) {
+      const importRe = /(?:\bfrom|\brequire\s*\(|^\s*import)\s*['"]([^'"]+)['"]/gm;
+      let im;
+      while ((im = importRe.exec(text))) ev.testImports.push({ file: f.rel, spec: im[1] });
+    }
 
     lines.forEach((line, i) => {
       // a marker counts only in TAG context (TODO:, TODO(, TODO!, TODO<space/eol>) — NOT when the
@@ -157,6 +202,18 @@ function gather(root) {
   return ev;
 }
 
+// Frozen scaffold-placeholder lists (ACC-03/04). Closed on purpose: an open "e.g." list lets two
+// assessors scan for different tokens and diverge. Lowercase; matched as substrings / exact values.
+const README_PLACEHOLDERS = [
+  'lorem ipsum', 'description goes here', 'a short description of the project', 'your project name here',
+  'todo: describe', 'get started by editing', 'bootstrapped with create', 'you can learn more in the',
+  'this is a starter template', 'welcome to your new project', 'replace this readme', 'project description goes here'
+];
+const META_PLACEHOLDERS = new Set([
+  'your name', 'a short description of the project', 'a short description', 'todo', 'description',
+  'my-awesome-project', 'package description', 'add description here', 'your name <you@example.com>'
+]);
+
 // ---------------------------------------------------------------------------
 // THE CRITERIA  ·  stable IDs, never reused. six domains.
 // Each: id, domain, criterion (observable), why (from a real failure), tell,
@@ -183,6 +240,26 @@ const CRITERIA = [
       return rate < 1
         ? { verdict: MET, evidence: `${ev.todos.length} markers across ${ev.totalLines} lines (${rate.toFixed(2)}/200)` }
         : { verdict: NOT_MET, evidence: `${ev.todos.length} markers across ${ev.totalLines} lines (${rate.toFixed(2)}/200)`, sample: ev.todos.slice(0, 5) };
+    }
+  },
+  {
+    id: 'SPEC-03', domain: 'specification integrity', core: false, tell: 'COLLAPSED',
+    criterion: 'Every relative link and image target in committed documentation resolves to a path in the repository.',
+    why: 'Agents describe and link to modules, guides, or scripts they never created, or that were later renamed, so the durable record points at nothing.',
+    assess: ev => {
+      if (ev.docFiles.length === 0) return { verdict: NA, evidence: 'no documentation files', note: 'no docs to check links in' };
+      const broken = [];
+      for (const { file, target } of ev.docLinks) {
+        if (/^(https?:|mailto:|tel:|#)/i.test(target) || target.includes('://') || target.startsWith('//')) continue;
+        let t = target.split('#')[0].split('?')[0];
+        if (!t) continue;                                  // pure in-page anchor
+        try { t = decodeURIComponent(t); } catch { /* keep raw */ }
+        if (!ev.pathSet.has(resolveRel(file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '', t)))
+          broken.push({ file, line: '', text: `→ ${target}` });
+      }
+      return broken.length === 0
+        ? { verdict: MET, evidence: `all ${ev.docLinks.length} documentation link(s) resolve` }
+        : { verdict: NOT_MET, evidence: `${broken.length} documentation link(s) resolve to nothing`, sample: broken.slice(0, 5) };
     }
   },
 
@@ -226,6 +303,20 @@ const CRITERIA = [
       ? { verdict: MET, evidence: 'CI configuration present' }
       : { verdict: NOT_MET, evidence: 'no CI workflow found' }
   },
+  {
+    id: 'VER-05', domain: 'verification integrity', core: true, tell: 'UNOPENED',
+    criterion: "The test suite imports at least one module from the project's own source tree.",
+    why: 'A suite that imports only the test framework or third-party modules exercises none of the project\'s own code — it is green and proves nothing.',
+    assess: ev => {
+      if (ev.tests.length === 0) return { verdict: NA, evidence: 'no tests present', note: 'VER-01 covers test presence' };
+      const isSource = s => /^\.\.?\//.test(s)
+        && !/(^|\/)(tests?|__tests__|__mocks__|spec)(\/|$)/i.test(s)
+        && !/\.(test|spec)\.[a-z]+$/i.test(s);
+      return ev.testImports.some(t => isSource(t.spec))
+        ? { verdict: MET, evidence: 'tests import project source modules' }
+        : { verdict: NOT_MET, evidence: 'no test imports a relative project source module (tests may exercise only the framework)' };
+    }
+  },
 
   // ---- AGENT BOUNDARIES ---------------------------------------------------
   {
@@ -265,6 +356,32 @@ const CRITERIA = [
     assess: ev => ev.hasLicense
       ? { verdict: MET, evidence: 'licence file present' }
       : { verdict: NOT_MET, evidence: 'no licence file' }
+  },
+  {
+    id: 'ACC-03', domain: 'human accountability', core: true, tell: 'ECHOED',
+    criterion: 'The README contains no unmodified template or scaffold placeholder text.',
+    why: 'Agents hand back the generator\'s default README, so the record looks complete but says nothing about what this particular code is for.',
+    assess: ev => {
+      if (ev.readmeText == null) return { verdict: NA, evidence: 'no README', note: 'ACC-01 covers README presence' };
+      const hits = README_PLACEHOLDERS.filter(p => ev.readmeText.includes(p));
+      return hits.length === 0
+        ? { verdict: MET, evidence: 'no scaffold placeholder text in README' }
+        : { verdict: NOT_MET, evidence: `README carries scaffold placeholder(s): ${hits.slice(0, 3).join('; ')}` };
+    }
+  },
+  {
+    id: 'ACC-04', domain: 'human accountability', core: false, tell: 'ECHOED',
+    criterion: 'Any author or description field in the package manifest is not a known scaffold placeholder value.',
+    why: 'A manifest still carrying "Your Name" or "A short description of the project" is output nobody edited or reviewed.',
+    assess: ev => {
+      if (!ev.hasPkg) return { verdict: NA, evidence: 'no package.json', note: 'no manifest ownership fields to read' };
+      const present = [ev.pkgAuthor, ev.pkgDescription].filter(Boolean).map(v => String(v).trim().toLowerCase());
+      if (present.length === 0) return { verdict: NA, evidence: 'no author/description fields present', note: 'nothing to check' };
+      const bad = present.filter(v => META_PLACEHOLDERS.has(v));
+      return bad.length === 0
+        ? { verdict: MET, evidence: `manifest ownership field(s) are specific (${present.length} checked)` }
+        : { verdict: NOT_MET, evidence: `placeholder ownership value: ${bad.join('; ')}` };
+    }
   },
 
   // ---- EVOLVABILITY -------------------------------------------------------
