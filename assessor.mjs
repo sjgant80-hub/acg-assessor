@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.3';
+const SPEC_VERSION = 'assessor-v0.4';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -142,6 +142,19 @@ function gather(root) {
   const readmeFile = files.find(f => /^readme/i.test(f.name));
   ev.readmeText = readmeFile ? read(readmeFile).toLowerCase() : null;
 
+  // CI command text (VER-06) — concat of CI config contents, sorted-file order = deterministic
+  ev.ciText = files
+    .filter(f => /\.github\/workflows\/.*\.ya?ml$/i.test(f.rel) || /\.circleci\/config\.yml$/i.test(f.rel) || /^(\.gitlab-ci\.yml|azure-pipelines\.yml|Jenkinsfile|\.travis\.yml)$/i.test(f.name))
+    .map(read).join('\n');
+
+  // assertion + test-case counts (VER-07) — `require` deliberately excluded from the assertion set
+  ev.testCases = 0; ev.assertions = 0;
+  for (const f of tests) {
+    const t = read(f);
+    ev.testCases  += (t.match(/\b(it|test|specify)\s*\(|^\s*def\s+test_|@Test\b|func\s+Test[A-Z]/gm) || []).length;
+    ev.assertions += (t.match(/\b(expect|assert\w*)\s*[(.]|\.should\b|\bt\.(Error|Fatal|Errorf|Fatalf)\b/g) || []).length;
+  }
+
   // package.json declared deps + ownership fields
   const pkgFile = files.find(f => f.name === 'package.json');
   if (pkgFile) {
@@ -156,6 +169,7 @@ function gather(root) {
 
   // single pass over code
   const blockHashes = new Map();
+  const bigHashes = new Map();
   for (const f of code) {
     const text = read(f);
     const lines = text.split('\n');
@@ -191,7 +205,22 @@ function gather(root) {
       if (!blockHashes.has(h)) blockHashes.set(h, []);
       blockHashes.get(h).push({ file: f.rel, line: i + 1 });
     }
+
+    // EVO-03: normalised 8-line windows over SOURCE files only — larger regenerated blocks
+    if (!tests.includes(f)) {
+      const big = lines.filter(l => !/^\s*(\/\/|#|\*|--)/.test(l) && l.trim() !== '').map(l => l.replace(/\s+/g, ' ').trim());
+      for (let i = 0; i + 8 <= big.length; i++) {
+        const h = createHash('sha256').update(big.slice(i, i + 8).join('\n')).digest('hex').slice(0, 16);
+        if (!bigHashes.has(h)) bigHashes.set(h, []);
+        bigHashes.get(h).push({ file: f.rel, line: i + 1 });
+      }
+    }
   }
+  ev.longDupes = [...bigHashes.entries()]
+    .filter(([, hits]) => hits.length > 1)
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .slice(0, 20)
+    .map(([, hits]) => ({ count: hits.length, at: hits.slice(0, 2) }));
   ev.dupes = [...blockHashes.entries()]
     .filter(([, hits]) => hits.length > 1)
     .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
@@ -317,6 +346,29 @@ const CRITERIA = [
         : { verdict: NOT_MET, evidence: 'no test imports a relative project source module (tests may exercise only the framework)' };
     }
   },
+  {
+    id: 'VER-06', domain: 'verification integrity', core: true, tell: 'PASSED',
+    criterion: 'The continuous-integration configuration contains a step that invokes a test runner.',
+    why: 'Agents add CI that lints or builds but never runs the tests, so a green check certifies nothing was verified.',
+    assess: ev => {
+      if (!ev.hasCI) return { verdict: NA, evidence: 'no CI configuration', note: 'VER-04 covers CI presence; nothing to inspect' };
+      return /\b(npm|yarn|pnpm)\s+(run\s+)?test\b|\bnode\s+--test\b|\bgo\s+test\b|\bcargo\s+test\b|\bpytest\b|python\s+-m\s+pytest\b|\brspec\b|\b(mvn|gradle)\b[^\n]*\btest\b/i.test(ev.ciText || '')
+        ? { verdict: MET, evidence: 'CI invokes a test runner' }
+        : { verdict: NOT_MET, evidence: 'CI configuration runs no recognised test command' };
+    }
+  },
+  {
+    id: 'VER-07', domain: 'verification integrity', core: true, tell: 'PASSED',
+    criterion: 'Across the test suite, assertion calls number at least as many as test-case declarations.',
+    why: 'Agents write test cases that call the code but assert nothing, so the case runs, passes, and verifies nothing.',
+    assess: ev => {
+      if (ev.tests.length === 0) return { verdict: NA, evidence: 'no tests present', note: 'VER-01 covers test presence' };
+      if (ev.testCases === 0) return { verdict: NA, evidence: 'no recognised test-case declarations', note: 'test style not recognised by this version' };
+      return ev.assertions >= ev.testCases
+        ? { verdict: MET, evidence: `${ev.assertions} assertion(s) across ${ev.testCases} test case(s)` }
+        : { verdict: NOT_MET, evidence: `${ev.assertions} assertion(s) for ${ev.testCases} test case(s) — under 1 per case` };
+    }
+  },
 
   // ---- AGENT BOUNDARIES ---------------------------------------------------
   {
@@ -395,6 +447,17 @@ const CRITERIA = [
       return bad.length === 0
         ? { verdict: MET, evidence: `no block repeated more than twice (${ev.dupes.length} appear exactly twice)` }
         : { verdict: NOT_MET, evidence: `${bad.length} block(s) repeated 3+ times (worst: ${bad[0].count}x)`, sample: bad.slice(0, 3) };
+    }
+  },
+  {
+    id: 'EVO-03', domain: 'evolvability', core: false, tell: 'REPEAT',
+    criterion: 'No normalised eight-line block of source code appears in two or more places.',
+    why: 'An agent regenerates a whole function rather than factoring it; the copies then drift, and a fix applied to one is not applied to the others. This catches larger verbatim blocks than the two-line EVO-01.',
+    assess: ev => {
+      if (ev.totalLines < 30) return { verdict: NA, evidence: 'codebase under 30 lines', note: 'insufficient code to assess duplication' };
+      return ev.longDupes.length === 0
+        ? { verdict: MET, evidence: 'no eight-line source block repeated' }
+        : { verdict: NOT_MET, evidence: `${ev.longDupes.length} eight-line block(s) duplicated (worst: ${ev.longDupes[0].count}x)`, sample: ev.longDupes.slice(0, 3) };
     }
   },
 

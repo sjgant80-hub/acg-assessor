@@ -3,6 +3,20 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.4
+
+Second expansion batch (17 → 20 criteria), still zero-git and deterministic against the static walk.
+
+- **VER-06** (core) — the CI configuration contains a step that invokes a test runner, not just a lint
+  or build. *A green check that never ran the tests certifies nothing.*
+- **VER-07** (core) — assertion calls number at least as many as test-case declarations. *Agents write
+  cases that call the code but assert nothing — the case runs, passes, and verifies nothing.* (`require`
+  is excluded from the assertion set.)
+- **EVO-03** — no normalised eight-line source block appears twice. *Catches whole regenerated functions
+  that the two-line EVO-01 measures differently.* Comment-only lines and blanks are dropped first.
+
+Self-assessment stays PASS: 8/8 core, 11/11 non-core (100%). `SPEC_VERSION` → v0.4, re-locked.
+
 ## assessor-v0.3
 
 First batch of the rubric expansion (13 → 17 criteria), the zero-risk, no-git group. Each is
