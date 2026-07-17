@@ -25,6 +25,15 @@ fails on any silent drift. The fingerprint is also stamped into every verdict.
   function body to ~2 qualifying lines, so a 6-line window could never match the exact thing it
   exists to catch. Window lowered to 2 lines.
 
+**REV-04 — the marker detector flagged its own definition (found by self-assessment).** Running the
+assessor on itself, SPEC-02 reported three abandoned-subgoal markers in `assessor.mjs` — but they were
+the literal strings `(TODO/FIXME/XXX/HACK)` that *define* the detector, not real abandoned work. A
+marker now counts only in tag context (`TODO:`, `TODO(`, `TODO!`, `TODO` before whitespace/end), not
+when the words merely appear inside a `/`- or `|`-delimited list. The badge already passed (SPEC-02 is
+non-core), but a false positive in the highest-noise detector is worth removing. The proper fix is
+comment-aware parsing (a later revision); this is the cheap, correct tightening. This is the method: a
+finding the tool made against itself, fixed in the open.
+
 **Portability fix.** Paths are now normalised to forward slashes, so criteria that match on `/`
 (test-file detection, CI detection) work on Windows as well as POSIX. A verdict must not depend on
 the operating system it was produced on.

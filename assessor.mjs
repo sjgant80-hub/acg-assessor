@@ -124,7 +124,9 @@ function gather(root) {
     ev.totalLines += lines.length;
 
     lines.forEach((line, i) => {
-      if (/\b(TODO|FIXME|XXX|HACK)\b/.test(line))
+      // a marker counts only in TAG context (TODO:, TODO(, TODO!, TODO<space/eol>) — NOT when the
+      // words merely appear inside a '/'- or '|'-delimited list, e.g. the detector's own definition.
+      if (/(^|[^A-Za-z0-9_])(TODO|FIXME|XXX|HACK)(:|\(|!|\s|$)/.test(line))
         ev.todos.push({ file: f.rel, line: i + 1, text: line.trim().slice(0, 100) });
       if (/\b(it|test|describe)\.(skip|todo)\b|\bxit\b|\bxdescribe\b|@pytest\.mark\.skip|t\.Skip\(/.test(line))
         ev.skips.push({ file: f.rel, line: i + 1, text: line.trim().slice(0, 100) });
