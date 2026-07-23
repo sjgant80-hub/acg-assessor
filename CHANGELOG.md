@@ -3,6 +3,20 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.7
+
+A **VER-01 detection fix**, found by turning the assessor on its own estate. VER-01 ("the repository
+contains tests") missed a suite named exactly `test.mjs` at the repo root — the konomi single-file
+convention — because the old pattern required a separator before `test` (`foo.test.mjs`) or a `test/`
+directory. A dozen real, test-bearing repos were being scored `UNOPENED` for tests they actually had,
+skewing every verdict pessimistic. The criteria text is unchanged; only evidence-gathering was corrected,
+so the fingerprint is stable — but results move, so the version is bumped and the fix is locked by a
+regression fixture (`test-corpus/root-test-demo/`) with a repo-root `test.mjs`.
+
+- Detection now also matches a basename that *is* the suite: `test.mjs`, `tests.js`, `spec.rb`, etc., at
+  any depth including root. Precise — `latest.mjs`, `contest.js`, `testimonials.mjs` are not matched, and
+  a root `test.mjs` is classified as a test, never as source (so VER-05 does not double-count it).
+
 ## assessor-v0.6
 
 The git-history / provenance domain (24 → 27 criteria), behind a **determinism harness**: git is read

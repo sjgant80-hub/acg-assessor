@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.6';
+const SPEC_VERSION = 'assessor-v0.7';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -128,7 +128,10 @@ function read(f) { try { return readFileSync(f.path, 'utf8'); } catch { return '
 function gather(root) {
   const files = walk(root, root, loadIgnore(root));
   const code  = files.filter(f => CODE_EXT.has(f.ext));
-  const tests = code.filter(f => /(\.|_|\/)(test|spec)\.|(^|\/)(tests?|__tests__|spec)\//i.test(f.rel));
+  // test files: (a) separator-prefixed  foo.test.mjs / foo_test.py / src/test.mjs
+  //             (b) a test directory     tests/ __tests__/ spec/
+  //             (c) a repo-root basename that IS the suite  test.mjs / spec.rb  (konomi convention)
+  const tests = code.filter(f => /(\.|_|\/)(test|spec)\.|(^|\/)(tests?|__tests__|spec)\/|(^|\/)(tests?|specs?)\.[a-z0-9]+$/i.test(f.rel));
   const src   = code.filter(f => !tests.includes(f));
 
   const ev = {
