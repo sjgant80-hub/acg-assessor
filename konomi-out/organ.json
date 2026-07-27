@@ -1,0 +1,18 @@
+{
+  "id": "acg-assessor",
+  "ring": "R0-ground",
+  "mesh": "niceassos-mesh",
+  "konomified": null,
+  "proof": {
+    "benchmark": "assessor-v0.7",
+    "core": "10/10",
+    "hash": "e17b8c5b133d37db561418e70cdf2655"
+  },
+  "behaviour": {
+    "gate": "witness",
+    "clean": false,
+    "score": null,
+    "source": null,
+    "skipped": true
+  }
+}
