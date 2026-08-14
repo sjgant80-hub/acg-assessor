@@ -10,18 +10,33 @@ import { repo, drop, CLEAN } from './fixture.mjs';
 /**
  * Bind a fixture builder to automatic cleanup for the calling test file.
  *
- * Every repository built through the returned helpers is removed after the test that asked for it,
- * whether that test passed or threw — a leaked fixture would otherwise be measured by the next run.
+ * Every repository built through `mk` is removed after the test that asked for it, whether that test
+ * passed or threw — a leaked fixture would otherwise be measured by the next run.
  */
 export function fixtures() {
-  const made = [];
-  test.afterEach(() => { while (made.length) drop(made.pop()); });
+  const perTest = [];
+  const perFile = [];
+  test.afterEach(() => { while (perTest.length) drop(perTest.pop()); });
+  test.after(() => { while (perFile.length) drop(perFile.pop()); });
 
-  const mk = (files = CLEAN, opts = {}) => { const d = repo(files, opts); made.push(d); return d; };
+  const mk = (files = CLEAN, opts = {}) => { const d = repo(files, opts); perTest.push(d); return d; };
+
+  // ⚑ SPEED IS CORRECTNESS HERE. witness bounds every test run at 20 seconds, and that bound applies
+  // to the mutants as well as the baseline. A suite slower than the bound does not merely fail to
+  // gate: every mutant times out, a timeout counts as KILLED, and the gate reports a FALSE CLEAN.
+  // This suite reached 19.8s by rebuilding the same repository — five git subprocesses each — for
+  // tests that only ever read it. Built once per file now, and shared by everything read-only.
+  const cache = new Map();
+  const shared = (key, files = CLEAN, opts = { git: true }) => {
+    if (!cache.has(key)) { const d = repo(files, opts); perFile.push(d); cache.set(key, d); }
+    return cache.get(key);
+  };
 
   return {
-    /** Build a repository on disk and return its path. */
     mk,
+    shared,
+    /** The one CLEAN repository with real history, reused by every test that only reads it. */
+    sharedClean: () => shared('clean'),
     /** Build a repository and return the evidence gather() reads from it. */
     scan: (files = CLEAN, opts = {}) => gather(mk(files, opts)),
     /** Build a repository with real history and return the verdict the assessor reaches on it. */

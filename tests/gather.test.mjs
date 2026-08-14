@@ -21,7 +21,7 @@ import { fixtures } from './helpers.mjs';
 // there. The tool caught its own author. `mk` registers the directory for cleanup so a test can be
 // written flat, with no nesting to close — and it now comes from the shared helper, because EVO-01
 // went on to catch the copy of that same three-line preamble sitting at the top of every test file.
-const { mk, scan, judge } = fixtures();
+const { mk, scan, judge, sharedClean } = fixtures();
 
 test('⚑ the walk finds the files and leaves the hidden ones alone', () => {
   const dir = mk({
@@ -218,7 +218,7 @@ test('a change to the code changes the hash', () => {
 });
 
 test('⚑ the badge needs EVERY core criterion, not most of them', () => {
-  const v = judge();
+  const v = assess(sharedClean()).verdict;
   assert.equal(v.badge, true, 'the clean fixture earns it');
   assert.match(v.summary.core, /^(\d+)\/\1$/, 'and it earns it by meeting all of the core, not a ratio of them');
 });
@@ -244,7 +244,7 @@ test('the dominant tell is the failure signature that appears most', () => {
 });
 
 test('a repository with no failures has no tell to report', () => {
-  const v = judge();
+  const v = assess(sharedClean()).verdict;
   assert.equal(v.dominantTell, null,
     '⚑ null, not an empty string or a default — naming a behavioural signature on a clean repo would be an accusation with no evidence');
   assert.deepEqual(v.tellTally, {});
@@ -265,7 +265,7 @@ test('the threshold is honoured and is part of the verdict', () => {
 });
 
 test('⚑ the verdict names the spec it was made under', () => {
-  const v = judge();
+  const v = assess(sharedClean()).verdict;
   assert.ok(v.spec && v.specFingerprint,
     'a verdict with no version is a verdict nobody can re-run — proof-of-play compares this fingerprint to spot a stale proof');
   assert.equal(v.specFingerprint.length, 32);

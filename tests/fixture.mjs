@@ -31,13 +31,14 @@ export function repo(files = {}, opts = {}) {
         GIT_COMMITTER_NAME: 'Fixture Author', GIT_COMMITTER_EMAIL: 'fixture@example.com',
         GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' },
     });
+    // The identity comes from the GIT_* environment above, so the three `git config` calls this used
+    // to make are redundant — and a git subprocess is the dominant cost of a fixture. Signing is
+    // disabled per-command instead, for the same reason. See the timing note in helpers.mjs: the
+    // suite has to stay well inside the mutation gate's per-run bound or the gate cannot run at all.
     git(['init', '-q']);
-    git(['config', 'user.name', 'Fixture Author']);
-    git(['config', 'user.email', 'fixture@example.com']);
-    git(['config', 'commit.gpgsign', 'false']);
     for (const subject of (opts.commits || ['add the parser', 'fix the boundary case'])) {
       git(['add', '-A']);
-      git(['commit', '-q', '--allow-empty', '-m', subject]);
+      git(['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', subject]);
     }
   }
   return dir;

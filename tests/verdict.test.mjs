@@ -17,7 +17,7 @@ import { fixtures } from './helpers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, '..', 'assessor.mjs');
-const { mk } = fixtures();
+const { mk, sharedClean, shared } = fixtures();
 
 // a repo that fails exactly one CORE criterion: BND-03, a manifest pointing at a file nobody wrote
 const DEAD_POINTER = { ...CLEAN, 'package.json': CLEAN['package.json'].replace('"main": "./src/index.mjs"', '"main": "./src/never-written.mjs"') };
@@ -26,7 +26,7 @@ const DEAD_POINTER = { ...CLEAN, 'package.json': CLEAN['package.json'].replace('
 const ratioOf = (v) => { const [m, t] = v.summary.nonCore.split('/').map(Number); return t ? m / t : 1; };
 
 test('⚑ the threshold comparison includes its own boundary', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const base = assess(dir, 0).verdict;
   assert.equal(base.summary.core.split('/')[0], base.summary.core.split('/')[1],
     'precondition: this fixture meets every core criterion, so only the ratio decides');
@@ -39,7 +39,7 @@ test('⚑ the threshold comparison includes its own boundary', () => {
 });
 
 test('⚑ one failed CORE criterion sinks the badge whatever the rest score', () => {
-  const dir = mk(DEAD_POINTER, { git: true });
+  const dir = shared('dead', DEAD_POINTER);
   const v = assess(dir, 0).verdict;                      // threshold 0: every non-core is satisfied
   assert.ok(v.results.some(r => r.id === 'BND-03' && r.verdict === 'NOT_MET'), 'precondition: BND-03 fails');
   assert.equal(v.badge, false,
@@ -47,7 +47,7 @@ test('⚑ one failed CORE criterion sinks the badge whatever the rest score', ()
 });
 
 test('a not-applicable criterion is excluded from both denominators', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const v = assess(dir).verdict;
   const [, coreTotal] = v.summary.core.split('/').map(Number);
   const [, nonTotal] = v.summary.nonCore.split('/').map(Number);
@@ -56,14 +56,14 @@ test('a not-applicable criterion is excluded from both denominators', () => {
 });
 
 test('the non-core ratio of a repo with no non-core criteria is 1, not 0/0', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const v = assess(dir).verdict;
   assert.ok(Number.isFinite(v.summary.nonCoreRatio), 'the ratio is always a real number');
   assert.ok(v.summary.nonCoreRatio >= 0 && v.summary.nonCoreRatio <= 1, 'and always a proportion');
 });
 
 test('⚑ the dominant tell is the commonest FAILURE, and is null when nothing failed', () => {
-  const clean = assess(mk(CLEAN, { git: true })).verdict;
+  const clean = assess(sharedClean()).verdict;
   const failed = clean.results.filter(r => r.verdict === 'NOT_MET');
   if (failed.length === 0) assert.equal(clean.dominantTell, null, 'no failures, no diagnosis');
 
@@ -78,7 +78,7 @@ test('⚑ the dominant tell is the commonest FAILURE, and is null when nothing f
 });
 
 test('⚑ the hash covers the whole verdict, so nothing can change quietly', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const a = assess(dir).verdict;
   const b = assess(dir).verdict;
   assert.equal(a.hash, b.hash, 'same repo, same hash — the point of a citable verdict');
@@ -88,12 +88,12 @@ test('⚑ the hash covers the whole verdict, so nothing can change quietly', () 
   assert.notEqual(a.hash, other.hash,
     '⚑ a different threshold is a different verdict — the same hash under a laxer bar would let a repo cite a strict-looking pass it never earned');
 
-  const dead = assess(mk(DEAD_POINTER, { git: true })).verdict;
+  const dead = assess(shared('dead', DEAD_POINTER)).verdict;
   assert.notEqual(a.hash, dead.hash, 'and different findings hash differently');
 });
 
 test('the hash is of the verdict as published, not of some inner subset', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const { verdict } = assess(dir);
   const { hash, ...rest } = verdict;
   const recomputed = execFileSync(process.execPath, ['-e',
@@ -107,13 +107,13 @@ test('the spec fingerprint is a function of the criteria, not of their order', (
   const fp = criteriaFingerprint();
   assert.match(fp, /^[0-9a-f]{32}$/, 'it is a hash');
   assert.equal(fp, criteriaFingerprint(), 'and a stable one');
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   assert.equal(assess(dir).verdict.specFingerprint, fp, 'and it is the one published in the verdict');
   assert.equal(assess(dir).verdict.spec, SPEC_VERSION, 'alongside the version it belongs to');
 });
 
 test('every published result carries its evidence, and a note only when there is one', () => {
-  const v = assess(mk(CLEAN, { git: true })).verdict;
+  const v = assess(sharedClean()).verdict;
   assert.equal(v.results.length, CRITERIA.length, 'nothing is dropped from the report');
   for (const r of v.results) {
     assert.ok(r.evidence && r.evidence.length > 0, `${r.id} says what it saw`);
@@ -150,8 +150,8 @@ const run = (args, opts = {}) => {
 };
 
 test('⚑ the CLI exit code is the verdict — in every output mode', () => {
-  const good = mk(CLEAN, { git: true });
-  const bad = mk(DEAD_POINTER, { git: true });
+  const good = sharedClean();
+  const bad = shared('dead', DEAD_POINTER);
 
   assert.equal(run([good]).code, 0, 'a passing repo exits 0');
   assert.equal(run([bad]).code, 1, 'a failing repo exits 1');
@@ -162,7 +162,7 @@ test('⚑ the CLI exit code is the verdict — in every output mode', () => {
 });
 
 test('the JSON mode emits the same verdict the library computes', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const { out } = run([dir, '--json']);
   const parsed = JSON.parse(out);
   assert.equal(parsed.hash, assess(dir).verdict.hash, 'byte-for-byte the same verdict, so the CLI is not a second implementation');
@@ -170,7 +170,7 @@ test('the JSON mode emits the same verdict the library computes', () => {
 });
 
 test('a threshold given on the command line is the threshold used', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const strict = JSON.parse(run([dir, '--json', '--threshold=1']).out);
   assert.equal(strict.threshold, 1, 'the flag is read');
   assert.equal(strict.hash, assess(dir, 1).verdict.hash, 'and reaches the scoring, not just the header');
@@ -191,7 +191,7 @@ test('⚑ a path that does not exist is a usage error, not a verdict', () => {
 });
 
 test('the human report states the verdict, the evidence and the hash', () => {
-  const dir = mk(CLEAN, { git: true });
+  const dir = sharedClean();
   const { out } = run([dir]);
   const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
   assert.match(plain, /VERDICT\s+PASS/, 'the answer');
@@ -202,7 +202,7 @@ test('the human report states the verdict, the evidence and the hash', () => {
 });
 
 test('the report of a failing repo names what failed', () => {
-  const { code, out } = run([mk(DEAD_POINTER, { git: true })]);
+  const { code, out } = run([shared('dead', DEAD_POINTER)]);
   const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
   assert.equal(code, 1);
   assert.match(plain, /VERDICT\s+FAIL/, 'the answer');
