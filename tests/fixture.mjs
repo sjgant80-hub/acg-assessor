@@ -24,11 +24,15 @@ export function repo(files = {}, opts = {}) {
     writeFileSync(full, body);
   }
   if (opts.git) {
+    // `author` lets a test commit under a chosen identity — needed to exercise the placeholder-identity
+    // criterion, which asks whether a name OR an email is a known unconfigured-git default. Testing
+    // that properly means committing as "Your Name <real@example.com>" and as the reverse.
+    const who = opts.author || { name: 'Fixture Author', email: 'fixture@example.com' };
     const git = (args) => execFileSync('git', args, {
       cwd: dir, stdio: 'pipe', encoding: 'utf8',
       env: { ...process.env,
-        GIT_AUTHOR_NAME: 'Fixture Author', GIT_AUTHOR_EMAIL: 'fixture@example.com',
-        GIT_COMMITTER_NAME: 'Fixture Author', GIT_COMMITTER_EMAIL: 'fixture@example.com',
+        GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email,
+        GIT_COMMITTER_NAME: who.name, GIT_COMMITTER_EMAIL: who.email,
         GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' },
     });
     // The identity comes from the GIT_* environment above, so the three `git config` calls this used

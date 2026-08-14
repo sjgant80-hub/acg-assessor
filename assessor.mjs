@@ -208,8 +208,8 @@ function gather(root) {
   for (const f of tests) {
     const t = read(f);
     ev.testCases  += (t.match(/\b(it|test|specify)\s*\(|^\s*def\s+test_|@Test\b|func\s+Test[A-Z]/gm) || []).length;
-    // ⚑ The second alternative is Python's assert STATEMENT, which takes no bracket and no dot —
-    // `assert compute() == 3`. Without it the tool counted `def test_` as a case and found no
+    // ⚑ The second alternative is Python's assert STATEMENT, which takes neither a bracket nor a dot
+    // after the word. Without it the tool counted `def test_` as a case and found no
     // assertion to match it, so an ordinary Python suite failed VER-07, a CORE criterion, for being
     // written in Python. It is anchored to the start of a line so that `import assert from …` and
     // `const assert = require(…)` are still not assertions: importing the library is not using it.
