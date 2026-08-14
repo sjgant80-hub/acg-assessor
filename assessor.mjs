@@ -497,7 +497,7 @@ const CRITERIA = [
       const refs = [...new Set(ev.manifestRefs)];
       if (refs.length === 0) return { verdict: MET, evidence: 'no manifest file references to resolve' };
       const unresolved = refs.filter(p => !ev.pathSet.has(p) && !ev.buildOutputs.has(p) && !/^(dist|build|out|lib)\//.test(p));
-      return unresolved.length !== 0
+      return unresolved.length === 0
         ? { verdict: MET, evidence: `all ${refs.length} manifest path(s) resolve` }
         : { verdict: NOT_MET, evidence: `${unresolved.length} manifest path(s) resolve to nothing: ${unresolved.slice(0, 4).join(', ')}` };
     }

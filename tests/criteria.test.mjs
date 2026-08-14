@@ -148,6 +148,23 @@ test('BND-02 · declared dependencies are used', () => {
 test('BND-03 · files the manifest points at exist', () => {
   assert.equal(v('BND-03', { hasPkg: false }), 'N/A');
   assert.equal(v('BND-03', { manifestRefs: [] }), 'MET', 'a manifest pointing at nothing has no broken pointers');
+
+  // ⚑ THIS TEST EXISTS BECAUSE ITS ABSENCE LET A MUTANT REACH GITHUB. The two cases above never
+  // reach the branch that actually resolves anything, so inverting that branch — a manifest whose
+  // paths ALL resolve failing, and one full of dead pointers passing — changed no test result. A
+  // witness run had it in the file when a commit was made, CI caught it, and nothing in this suite
+  // did. BND-03 is core, so an inverted one hands the badge to exactly the repositories it exists to
+  // catch: the ones whose wired-up entrypoint was never generated.
+  const present = new Set(['src/index.mjs']);
+  const built = new Set();
+  assert.equal(v('BND-03', { manifestRefs: ['src/index.mjs'], pathSet: present, buildOutputs: built }), 'MET',
+    '⚑ every path resolving is a PASS');
+  assert.equal(v('BND-03', { manifestRefs: ['src/gone.mjs'], pathSet: present, buildOutputs: built }), 'NOT_MET',
+    '⚑ and a path resolving to nothing is a FAIL — the two must never be able to swap places');
+  assert.match(by('BND-03').assess({ ...BASE, manifestRefs: ['src/gone.mjs'], pathSet: present, buildOutputs: built }).evidence,
+    /src\/gone\.mjs/, 'and the dead pointer is named, not merely counted');
+  assert.equal(v('BND-03', { manifestRefs: ['dist/bundle.js'], pathSet: present, buildOutputs: built }), 'MET',
+    'a build output that is not committed is not a dead pointer — it is generated');
 });
 
 test('ACC-01 and ACC-02 · a README and a licence', () => {
