@@ -2,3 +2,9 @@ node_modules/
 *.log
 .DS_Store
 .env
+
+# ⚑ witness writes these while a mutation run is in flight. One of them was committed by a
+# `git add -A` during a run — a 765-line copy of the assessor, tracked in the repository, which is
+# both noise and a large block of duplicate code the rubric would count. Never again by accident.
+*.witnessbak
+witness.*.baseline.json
