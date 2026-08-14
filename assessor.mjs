@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.7';
+const SPEC_VERSION = 'assessor-v0.8';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -66,6 +66,12 @@ function resolveRel(dir, target) {
 
 // EVO-02 defect markers — built into the regex from an array, so THIS file contains no literal
 // comment-delimiter-plus-marker sequence that would flag itself (the REV-04/REV-05 lesson).
+// Import/require lines are excluded from the duplication scan for the same reason short lines and
+// comment lines already are: every file that uses a module repeats them, they cannot be factored out
+// of the files that need them, and counting them makes an ordinarily-structured project — one with
+// several test files sharing a test runner — read as regenerated-not-factored.
+const IMPORT_RE = /^(import\b|export\s+(\*|\{)[^=]*\bfrom\b|const\s+\{?[^=]*\}?\s*=\s*require\()/;
+
 const DEFECT_MARKERS = ['FIXME', 'HACK', 'XXX', 'BUG', 'BROKEN', 'WIP'];
 const DEFECT_RE = new RegExp('(?:^|\\s)(?:\\/\\/|#|--|\\/\\*|\\*)\\s*(' + DEFECT_MARKERS.join('|') + ')\\b');
 const ADR_UNFILLED = new Set(['', 'todo', 'tbd', 'tba', '<status>', '[status]', 'n/a', 'xxx', '...']);
@@ -270,22 +276,37 @@ function gather(root) {
         ev.usedDeps.add(d);
     }
 
-    // REPEAT: normalised 2-line window hashing -> regenerated-not-factored signature
-    const norm = lines.map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 12 && !/^(\/\/|#|\*)/.test(l));
+    // REPEAT: normalised 2-line window hashing -> regenerated-not-factored signature.
+    //
+    // Each surviving line keeps its TRUE line number. Indexing into the filtered array instead would
+    // make every location the tool reports wrong, by however many comments and short lines sat above
+    // it — a finding that looks actionable, points somewhere else, and cannot be argued with.
+    //
+    // A window is a block only when the two lines are genuinely adjacent. Filtering removes lines,
+    // so without this check a pair separated by a comment block closes the gap and is reported as a
+    // duplicated block that appears nowhere in the file.
+    const norm = lines
+      .map((l, i) => ({ text: l.replace(/\s+/g, ' ').trim(), line: i + 1 }))
+      .filter(e => e.text.length > 12 && !/^(\/\/|#|\*)/.test(e.text) && !IMPORT_RE.test(e.text));
     for (let i = 0; i + 2 <= norm.length; i++) {
-      const block = norm.slice(i, i + 2).join("\n");
-      const h = createHash('sha256').update(block).digest('hex').slice(0, 16);
+      const a = norm[i], b = norm[i + 1];
+      if (b.line !== a.line + 1) continue;
+      const h = createHash('sha256').update(a.text + '\n' + b.text).digest('hex').slice(0, 16);
       if (!blockHashes.has(h)) blockHashes.set(h, []);
-      blockHashes.get(h).push({ file: f.rel, line: i + 1 });
+      blockHashes.get(h).push({ file: f.rel, line: a.line });
     }
 
-    // EVO-03: normalised 8-line windows over SOURCE files only — larger regenerated blocks
+    // EVO-03: normalised 8-line windows over SOURCE files only — larger regenerated blocks. Here the
+    // window deliberately closes gaps over blank and comment lines: at eight lines the signature is
+    // the code itself, and regenerated code commonly differs only in how it is spaced and annotated.
     if (!tests.includes(f)) {
-      const big = lines.filter(l => !/^\s*(\/\/|#|\*|--)/.test(l) && l.trim() !== '').map(l => l.replace(/\s+/g, ' ').trim());
+      const big = lines
+        .map((l, i) => ({ text: l.replace(/\s+/g, ' ').trim(), line: i + 1 }))
+        .filter(e => e.text !== '' && !/^(\/\/|#|\*|--)/.test(e.text));
       for (let i = 0; i + 8 <= big.length; i++) {
-        const h = createHash('sha256').update(big.slice(i, i + 8).join('\n')).digest('hex').slice(0, 16);
+        const h = createHash('sha256').update(big.slice(i, i + 8).map(e => e.text).join('\n')).digest('hex').slice(0, 16);
         if (!bigHashes.has(h)) bigHashes.set(h, []);
-        bigHashes.get(h).push({ file: f.rel, line: i + 1 });
+        bigHashes.get(h).push({ file: f.rel, line: big[i].line });
       }
     }
   }
@@ -753,6 +774,9 @@ function main() {
   } else if (args.includes('--json')) {
     const { verdict } = assess(path, threshold);
     console.log(JSON.stringify(verdict, null, 2));
+    // the exit code is the verdict in EVERY output mode. --json is the documented way to wire this
+    // into CI; exiting 0 on a FAIL would make every such pipeline green forever.
+    process.exit(verdict.badge ? 0 : 1);
   } else {
     const v = report(path, threshold);
     process.exit(v.badge ? 0 : 1);

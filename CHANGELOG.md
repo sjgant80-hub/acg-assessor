@@ -3,6 +3,41 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.8
+
+Three fixes, all found by walking the assessor's own lines with a mutation gate rather than by
+reading them. The criteria text is unchanged, so the fingerprint is stable — but **results move**,
+which is the same reason v0.7 was bumped.
+
+**⚑ Every duplication location the tool reported was wrong.** EVO-01 and EVO-03 hashed a sliding
+window over the *filtered* line array and then reported `i + 1` as the line number. Since filtering
+drops comment and short lines, the number reported was the position in the filtered array, not in the
+file — off by however many comments sat above it, and further off the deeper into the file you went.
+A user told "this block is repeated 5×, see `file.mjs:151`" opened line 151 and found unrelated code.
+That is worse than no location: it looks actionable, and it cannot be argued with. Both scans now
+carry the true line number.
+
+**⚑ And EVO-01 reported blocks that existed nowhere.** Because filtering *removed* lines rather than
+breaking the window, two statements separated by a comment block were hashed as an adjacent pair. The
+tool reported a duplicated two-line block that appears in no file in the repository. A two-line window
+is now only a block when the two lines are genuinely adjacent. EVO-03 deliberately keeps closing gaps
+over blank and comment lines: at eight lines the signature is the code itself, and regenerated code
+commonly differs only in how it is spaced.
+
+**Import lines are excluded from EVO-01**, for the same reason short lines and comment lines already
+were: every file that uses a module repeats them, they cannot be factored out of the files that need
+them, and counting them made any project with four test files fail the criterion *for having four
+test files*. This assessor was failing its own EVO-01 largely on its own import headers.
+
+**⚑ `--json` exited 0 on a FAIL.** The README offers `--json` as the machine-readable path, which is
+the one a CI would wire up; a pipeline built on it would have been green forever regardless of the
+verdict. The exit code is now the verdict in every output mode. This is precisely the test-theatre
+the tool exists to detect, shipped inside the tool.
+
+**Honest limitation, unchanged:** the spec fingerprint hashes the *criteria*, not the
+evidence-gathering. A change like this one moves every verdict without tripping that guard. What now
+holds it is the test suite — 93 tests, including the boundary cases above — not discipline.
+
 ## assessor-v0.7
 
 A **VER-01 detection fix**, found by turning the assessor on its own estate. VER-01 ("the repository

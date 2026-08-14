@@ -10,7 +10,7 @@
   "scripts": {
     "assess": "node assessor.mjs",
     "self": "node assessor.mjs .",
-    "test": "node --test tests/assessor.test.mjs tests/criteria.test.mjs tests/gather.test.mjs",
+    "test": "node --test tests/assessor.test.mjs tests/criteria.test.mjs tests/gather.test.mjs tests/scanners.test.mjs tests/verdict.test.mjs",
     "check-spec": "node scripts/check-spec-version.mjs",
     "demo:clean": "node assessor.mjs test-corpus/clean-demo",
     "demo:slop": "node assessor.mjs test-corpus/slop-demo"

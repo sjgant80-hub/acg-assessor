@@ -12,23 +12,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gather, assess } from '../assessor.mjs';
-import { repo, drop, CLEAN } from './fixture.mjs';
+import { CLEAN, testFile } from './fixture.mjs';
+import { fixtures } from './helpers.mjs';
 
 // ⚑ FLAT ON PURPOSE. An earlier version wrapped every case in withRepo(files, opts, dir => { ... }),
 // and the assessor's own duplication criterion failed this repository: every one of those closures
 // ends in the same two-line closing sequence, and twenty of them is real repetition however it got
 // there. The tool caught its own author. `mk` registers the directory for cleanup so a test can be
-// written flat, with no nesting to close.
-const made = [];
-const mk = (files, opts = {}) => { const d = repo(files, opts); made.push(d); return d; };
-test.afterEach(() => { while (made.length) drop(made.pop()); });
-
-// ⚑ These two exist because EVO-01 caught the duplication they remove. Writing the tests for this
-// assessor made the assessor fail its own rubric — the repeated "build a repo, then gather it" pair
-// appeared often enough to trip the duplication criterion. That is the tool working, on its own
-// author, which is the only kind of proof worth having.
-const evidenceOf = (files, opts = {}) => withRepo(files, opts, (dir) => gather(dir));
-const relsOf = (files, opts = {}) => evidenceOf(files, opts).files.map(f => f.rel);
+// written flat, with no nesting to close — and it now comes from the shared helper, because EVO-01
+// went on to catch the copy of that same three-line preamble sitting at the top of every test file.
+const { mk, scan, judge } = fixtures();
 
 test('⚑ the walk finds the files and leaves the hidden ones alone', () => {
   const dir = mk({
@@ -92,8 +85,7 @@ test('⚑ an ignore entry matches a path segment, not a prefix of a name', () =>
 });
 
 test('lines, code and tests are counted from what is really there', () => {
-  const dir = mk(CLEAN, {});
-  const ev = gather(dir);
+  const ev = scan();
   assert.equal(ev.tests.length, 1, 'one test file');
   assert.equal(ev.src.length, 1, 'one source file');
   assert.equal(ev.code.length, 2, 'and both count as code');
@@ -101,8 +93,7 @@ test('lines, code and tests are counted from what is really there', () => {
 });
 
 test('⚑ a test file is not counted as source, and source is not counted as a test', () => {
-  const dir = mk(CLEAN, {});
-  const ev = gather(dir);
+  const ev = scan();
   assert.ok(ev.tests.every(t => !ev.src.includes(t)),
     'if the two overlapped, a repo of nothing but tests would satisfy the coverage ratio against itself');
 });
@@ -120,13 +111,9 @@ test('markers are found, and only real ones', () => {
 test('a skipped test is found', () => {
   const dir = mk({
     ...CLEAN,
-    'tests/index.test.mjs': [
-      "import test from 'node:test';",
-      "import { v1 } from '../src/index.mjs';",
-      // built from parts so this fixture does not read as a skipped test in THIS repository —
-      // the assessor cannot tell a string from code, and it is right not to try
-      "test." + "skip('not run', () => { v1; });",
-    ].join('\n'),
+    // built from parts so this fixture does not read as a skipped test in THIS repository —
+    // the assessor cannot tell a string from code, and it is right not to try
+    'tests/index.test.mjs': testFile("test." + "skip('not run', () => { v1; });"),
   }, {});
   assert.equal(gather(dir).skips.length, 1, 'a skipped test is a test that does not run, and it is counted');
 });
@@ -146,8 +133,7 @@ test('⚑ git is read for what can be compared, never for identity or time', () 
 });
 
 test('a directory that is not a repository is reported as such, not guessed at', () => {
-  const dir = mk(CLEAN, {});
-  const ev = gather(dir);
+  const ev = scan();
   assert.equal(ev.git.ok, false, 'no git is an honest "cannot tell", never an assumed pass');
 });
 
@@ -184,8 +170,7 @@ test('an external link is not treated as a file that ought to exist', () => {
 });
 
 test('the manifest is read for what it points at and who owns it', () => {
-  const dir = mk(CLEAN, {});
-  const ev = gather(dir);
+  const ev = scan();
   assert.ok(ev.manifestRefs.includes('src/index.mjs'), 'the main entry is a reference to resolve');
   assert.deepEqual(ev.pkgScripts, ['test'], 'and the scripts are read by name');
   assert.equal(ev.pkgAuthor, 'A Real Person');
@@ -210,8 +195,7 @@ test('⚑ a declared dependency that nothing imports is found', () => {
 });
 
 test('test imports are attributed to the file that made them', () => {
-  const dir = mk(CLEAN, {});
-  const ev = gather(dir);
+  const ev = scan();
   assert.ok(ev.testImports.every(i => i.file && i.spec), 'each import knows its file and its specifier');
   assert.ok(ev.testImports.some(i => i.spec === '../src/index.mjs'), 'the source import is seen');
   assert.ok(ev.testImports.some(i => i.spec === 'node:test'), 'and so is the runner, so a criterion can tell them apart');
@@ -234,8 +218,7 @@ test('a change to the code changes the hash', () => {
 });
 
 test('⚑ the badge needs EVERY core criterion, not most of them', () => {
-  const dir = mk(CLEAN, { git: true });
-  const v = assess(dir).verdict;
+  const v = judge();
   assert.equal(v.badge, true, 'the clean fixture earns it');
   assert.match(v.summary.core, /^(\d+)\/\1$/, 'and it earns it by meeting all of the core, not a ratio of them');
 });
@@ -261,8 +244,7 @@ test('the dominant tell is the failure signature that appears most', () => {
 });
 
 test('a repository with no failures has no tell to report', () => {
-  const dir = mk(CLEAN, { git: true });
-  const v = assess(dir).verdict;
+  const v = judge();
   assert.equal(v.dominantTell, null,
     '⚑ null, not an empty string or a default — naming a behavioural signature on a clean repo would be an accusation with no evidence');
   assert.deepEqual(v.tellTally, {});
@@ -283,8 +265,7 @@ test('the threshold is honoured and is part of the verdict', () => {
 });
 
 test('⚑ the verdict names the spec it was made under', () => {
-  const dir = mk(CLEAN, { git: true });
-  const v = assess(dir).verdict;
+  const v = judge();
   assert.ok(v.spec && v.specFingerprint,
     'a verdict with no version is a verdict nobody can re-run — proof-of-play compares this fingerprint to spot a stale proof');
   assert.equal(v.specFingerprint.length, 32);

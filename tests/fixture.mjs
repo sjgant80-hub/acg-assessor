@@ -47,6 +47,20 @@ export function drop(dir) {
   rmSync(dir, { recursive: true, force: true });
 }
 
+/**
+ * A test file for a fixture repository: the usual preamble, then whatever the case is really about.
+ *
+ * The preamble is here rather than written out at each call site because EVO-01 caught it — three
+ * fixtures opening with the same two import lines is the repetition that criterion looks for, and
+ * excusing it in the tool's own test fixtures would be the exact thing the tool exists to refuse.
+ */
+export const testFile = (...body) => [
+  "import test from 'node:test';",
+  "import assert from 'node:assert/strict';",
+  "import { v1 } from '../src/index.mjs';",
+  ...body,
+].join('\n') + '\n';
+
 /** A repository that meets everything, as the baseline other fixtures deviate from. */
 export const CLEAN = {
   'README.md': '# A real tool\n\nIt does a real thing, described here at length so nothing reads as a placeholder.\n',
@@ -60,11 +74,6 @@ export const CLEAN = {
   'CLAUDE.md': 'Instructions for the agent working in this repository.\n',
   'docs/design.md': '# Design\n\nHow it works.\n',
   'src/index.mjs': Array.from({ length: 60 }, (_, i) => `export const v${i} = ${i};`).join('\n') + '\n',
-  'tests/index.test.mjs': [
-    "import test from 'node:test';",
-    "import assert from 'node:assert/strict';",
-    "import { v1 } from '../src/index.mjs';",
-    "test('it works', () => { assert.equal(v1, 1); });",
-  ].join('\n') + '\n',
+  'tests/index.test.mjs': testFile("test('it works', () => { assert.equal(v1, 1); });"),
   '.github/workflows/ci.yml': 'name: ci\non: [push]\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm test\n',
 };
