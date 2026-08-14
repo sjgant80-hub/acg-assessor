@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { assess, CRITERIA, criteriaFingerprint, SPEC_VERSION } from '../assessor.mjs';
@@ -120,6 +121,22 @@ test('every published result carries its evidence, and a note only when there is
       `${r.id}: a note is a justification for skipping, so it appears only where something was skipped`);
   }
   assert.ok(v.results.some(r => r.verdict === 'N/A' ? r.note : true), 'and an n/a is justified rather than silent');
+});
+
+test('⚑ SPEC.md describes the criteria the program actually applies', () => {
+  // "The rubric is a program" is this repository's whole claim. A prose spec that drifts from the
+  // executable one turns that claim inside out: the document a client reads would describe a rubric
+  // nothing enforces. Nothing checked this, so nothing stopped it.
+  const raw = readFileSync(join(HERE, '..', 'SPEC.md'), 'utf8');
+  const spec = raw.replace(/\s+/g, ' ');   // SPEC.md wraps its lines; the criteria do not
+  for (const c of CRITERIA) {
+    assert.ok(raw.includes(c.id), `${c.id} is applied by the program but never mentioned in SPEC.md`);
+    assert.ok(spec.includes(c.criterion.replace(/\s+/g, ' ').replace(/\.$/, '')),
+      `${c.id}: SPEC.md does not state the criterion the program applies`);
+  }
+  const declared = [...spec.matchAll(/\*\*([A-Z]{3,4}-\d\d)\*\*/g)].map(m => m[1]);
+  for (const id of new Set(declared)) assert.ok(CRITERIA.some(c => c.id === id),
+    `⚑ SPEC.md declares ${id}, which the program does not apply — a criterion a repo can never fail`);
 });
 
 // --- the command line -------------------------------------------------------

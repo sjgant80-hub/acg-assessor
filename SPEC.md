@@ -1,9 +1,15 @@
 # The Assessor — Rubric Specification
 
-`assessor-v0.2` · binary · deterministic · threshold-gated
+binary · deterministic · threshold-gated · the spec version is stamped on the criteria list below and
+on every verdict, so this document never carries a version of its own to go stale
 
-This document is the rubric. The program in `assessor.mjs` is its executable form. Where prose and
-code disagree, that is a bug in one of them — file it.
+This document is the rubric, and **§6 is generated from `assessor.mjs`** — the criteria listed there
+are the criteria the program applies, rendered, not a description of them maintained alongside.
+
+⚑ It was not always. Until v0.8 this file described thirteen criteria while the program applied
+twenty-seven, so fourteen rules — five of them core — could fail a repository without appearing in
+the published rubric at all. Prose and code cannot be kept in step by intention; `scripts/sync-spec.mjs
+--check` runs in CI and fails the build if they part.
 
 ## 1 · Why this exists
 
@@ -70,54 +76,63 @@ the verdict reports the **dominant tell** — the failure mode that dominates th
 | `ECHOED` | scaffold/boilerplate retained unmodified |
 | `INERT` | unreachable or no-op code |
 
-## 6 · The criteria (v0.2)
+## 6 · The criteria
 
-Thirteen criteria. `core` criteria are marked ●. Each carries the failure it was written from.
+<!-- BEGIN GENERATED CRITERIA · edit assessor.mjs, then run scripts/sync-spec.mjs -->
+
+**27 criteria** · 11 core (marked ●) · spec `assessor-v0.8`.
+
+This section is generated from the criteria the assessor actually applies. It is not a
+description of the program — it is the program's own list, rendered. Each entry carries the
+tell it detects and the failure it was written from.
+
 
 ### specification integrity
-- **SPEC-01** ● (`COLLAPSED`) — A written specification, design note, or ADR exists and is
-  version-controlled alongside the code. *Agents generate from a prompt that is then discarded;
-  without a durable spec, no one can say what the code was supposed to do.*
-- **SPEC-02** (`COLLAPSED`) — Abandoned subgoal markers (TODO/FIXME/XXX/HACK) number fewer than 1
-  per 200 lines of code. *Marker density is the most direct measure of intent started and dropped.*
-  N/A under 30 lines.
+- **SPEC-01** ● (`COLLAPSED`) — A written specification, design note, or ADR exists and is version-controlled alongside the code. *Agents generate from a prompt that is discarded. Without a durable spec, no one can say what the code was supposed to do, so no one can say whether it is wrong.*
+- **SPEC-02** (`COLLAPSED`) — Abandoned subgoal markers (TODO/FIXME/XXX/HACK) number fewer than 1 per 200 lines of code. *Agents open subgoals and do not close them. Marker density is the most direct measure of intent that was started and dropped.*
+- **SPEC-03** (`COLLAPSED`) — Every relative link and image target in committed documentation resolves to a path in the repository. *Agents describe and link to modules, guides, or scripts they never created, or that were later renamed, so the durable record points at nothing.*
+- **SPEC-04** (`COLLAPSED`) — Every architecture decision record declares a concrete, non-placeholder Status. *Agents generate decision records from a template and leave the Status blank, so a reader cannot tell whether a documented decision is proposed, accepted, or superseded.*
+- **SPEC-05** (`COLLAPSED`) — Every run command referenced in documentation is defined in the project's script/target manifest. *Agents document build and run commands that were never wired up, so following the README fails.*
 
 ### verification integrity
-- **VER-01** ● (`UNOPENED`) — The repository contains tests. *Generated code arrives confident and
-  unexercised; the absence of tests is an unassessable codebase, not a maturity level.*
-- **VER-02** ● (`PASSED`) — No test is skipped, pending, or disabled without an adjacent written
-  justification. *A skipped test is a failing test with the alarm removed.* N/A when no tests exist.
-- **VER-03** (`UNOPENED`) — Test files number at least 1 per 4 source files. *Catches the case where
-  tests were written for the demo path and nothing else.* N/A with no source files.
-- **VER-04** (`UNOPENED`) — An automated check runs on every change (CI configuration present).
-  *Without CI, "the tests pass" means one person ran them once on one machine.*
+- **VER-01** ● (`UNOPENED`) — The repository contains tests. *The single most common finding. Generated code arrives confident and unexercised. Absence of tests is not a maturity level, it is an unassessable codebase.*
+- **VER-02** ● (`PASSED`) — No test is skipped, pending, or disabled without an adjacent written justification. *A skipped test is a failing test with the alarm removed. Agents skip a test to make the suite green and report success.*
+- **VER-03** (`UNOPENED`) — Test files number at least 1 per 4 source files. *Not a coverage metric. A ratio this coarse only catches the case where tests were written for the demo path and nothing else.*
+- **VER-04** (`UNOPENED`) — An automated check runs on every change (CI configuration present). *Without CI, "the tests pass" means one person ran them once on one machine. Agent-assisted teams ship faster than manual verification can follow.*
+- **VER-05** ● (`UNOPENED`) — The test suite imports at least one module from the project's own source tree. *A suite that imports only the test framework or third-party modules exercises none of the project's own code — it is green and proves nothing.*
+- **VER-06** ● (`PASSED`) — The continuous-integration configuration contains a step that invokes a test runner. *Agents add CI that lints or builds but never runs the tests, so a green check certifies nothing was verified.*
+- **VER-07** ● (`PASSED`) — Across the test suite, assertion calls number at least as many as test-case declarations. *Agents write test cases that call the code but assert nothing, so the case runs, passes, and verifies nothing.*
 
 ### agent boundaries
-- **BND-01** (`ECHOED`) — Agent instructions/configuration are committed to the repository. *If the
-  agent is steered by a file on one machine, the build is not reproducible and the constraints are
-  not reviewable.* N/A if no agents are used — the assessor must justify.
-- **BND-02** (`UNSPENT`) — Every declared runtime dependency is imported somewhere in the source.
-  *Each unused dependency is unreviewed third-party code inside the trust boundary for no benefit.*
-  N/A when no dependency manifest is read.
+- **BND-01** (`ECHOED`) — Agent instructions/configuration are committed to the repository. *If the agent is steered by a file on one developer's machine, the build is not reproducible and the agent's constraints are not reviewable.*
+- **BND-02** (`UNSPENT`) — Every declared runtime dependency is imported somewhere in the source. *Agents add dependencies speculatively and abandon the approach. Each unused dependency is unreviewed third-party code inside the trust boundary for no benefit.*
+- **BND-03** ● (`INERT`) — Every file path the package manifest wires up (entrypoints and script targets) resolves to a file, unless it is a declared build output. *Agents point main/bin or a script at a file they never generated, so the wired-up entrypoint is dead on arrival.*
 
 ### human accountability
-- **ACC-01** ● (`ECHOED`) — A README states what the system is for and how to run it. *The cheapest
-  test of whether a human ever owned this.*
-- **ACC-02** (`ECHOED`) — A licence file is present. *Legal accountability is the floor of human
-  accountability.*
+- **ACC-01** ● (`ECHOED`) — A README states what the system is for and how to run it. *The cheapest possible test of whether a human ever owned this. Generated repositories routinely have none, or have one describing a template.*
+- **ACC-02** (`ECHOED`) — A licence file is present. *Legal accountability is the floor of human accountability. Its absence usually means nobody made a decision about the code, they just accepted output.*
+- **ACC-03** ● (`ECHOED`) — The README contains no unmodified template or scaffold placeholder text. *Agents hand back the generator's default README, so the record looks complete but says nothing about what this particular code is for.*
+- **ACC-04** (`ECHOED`) — Any author or description field in the package manifest is not a known scaffold placeholder value. *A manifest still carrying "Your Name" or "A short description of the project" is output nobody edited or reviewed.*
+- **ACC-05** (`ECHOED`) — No commit author identity is a known unconfigured-git or scaffold placeholder. *A commit authored by "Your Name" or an unconfigured default means nobody put their name to the change.*
 
 ### evolvability
-- **EVO-01** (`REPEAT`) — No two-line normalised code block is repeated more than twice across the
-  codebase. *An agent asked for a similar feature regenerates rather than factors; each copy then
-  diverges, and a fix applied to one is not applied to the others.* N/A under 30 lines.
+- **EVO-01** (`REPEAT`) — No two-line normalised code block is repeated more than twice across the codebase. *The signature finding of agent-maintained code. An agent asked for a similar feature regenerates rather than factors. Each copy then diverges, and a fix applied to one is not applied to the others.*
+- **EVO-03** (`REPEAT`) — No normalised eight-line block of source code appears in two or more places. *An agent regenerates a whole function rather than factoring it; the copies then drift, and a fix applied to one is not applied to the others. This catches larger verbatim blocks than the two-line EVO-01.*
+- **EVO-02** (`COLLAPSED`) — No source comment carries a defect marker (FIXME, HACK, XXX, BUG, BROKEN, WIP) as its leading token. *A defect the author admitted in a comment and did not fix is a known hazard shipped in place; agents leave these behind routinely. Distinct from SPEC-02, which measures TODO-family density.*
 
 ### provenance
-- **PRV-01** ● (`UNSPENT`) — Dependency versions are pinned by a committed lockfile. *Without a lock,
-  the code that was assessed is not the code that will run.* N/A with no manifest or zero
-  dependencies.
-- **PRV-02** (`INERT`) — The repository is under version control with history present. *A repository
-  initialised in one commit has erased its own provenance.* N/A when assessing an exported archive —
-  the assessor must justify.
+- **PRV-01** ● (`UNSPENT`) — Dependency versions are pinned by a committed lockfile. *Without a lock, the code that was assessed is not the code that will run. Provenance is the claim that this artefact is the one that was reviewed.*
+- **PRV-02** (`INERT`) — The repository is under version control with history present. *Commit history is the only record of who decided what and when. A repository initialised in one commit has erased its own provenance.*
+- **PRV-03** ● (`ECHOED`) — A non-trivial repository has more than one commit in its history. *A repository with a single commit has no record of how it was built — the agent dumped its output and called it done.*
+- **PRV-05** (`COLLAPSED`) — Fewer than a quarter of commits carry an empty or throwaway message. *Bulk "wip"/"fix"/"update" subjects are the signature of commits generated to satisfy a hook rather than to record a decision.*
+
+Tells: `UNSPENT` · `UNOPENED` · `REPEAT` · `PASSED` · `COLLAPSED` · `ECHOED` · `INERT`.
+
+**N/A conditions are not listed here.** They are decided per repository and printed with a
+written justification on every run, because whether a criterion applies is a fact about the
+repository in front of you, not about the rubric.
+
+<!-- END GENERATED CRITERIA -->
 
 ## 7 · Versioning and reproducibility
 

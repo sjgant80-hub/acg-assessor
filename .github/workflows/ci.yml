@@ -13,7 +13,14 @@ jobs:
           node-version: '20'
       - name: criteria fingerprint matches the spec version
         run: node scripts/check-spec-version.mjs
-      - name: tests (determinism + corpus + self-assessment)
-        run: node --test tests/assessor.test.mjs
+      # ⚑ SPEC.md is the rubric clients are pointed at. It described thirteen criteria while the
+      # program applied twenty-seven. Generated now, and checked here so they cannot part again.
+      - name: SPEC.md states the criteria the program applies
+        run: node scripts/sync-spec.mjs --check
+      # ⚑ `npm test`, not a single named file. This step used to run only
+      # tests/assessor.test.mjs, so the suite grew to five files and CI kept
+      # exercising one of them — green on a third of the tests it appeared to run.
+      - name: tests
+        run: npm test
       - name: the assessor passes its own rubric
         run: node assessor.mjs .

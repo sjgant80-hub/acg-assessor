@@ -33,7 +33,12 @@ node assessor.mjs . --threshold=0.8
 node assessor.mjs --fingerprint  # the criteria fingerprint for this spec version
 ```
 
-Exit code is `0` on PASS, `1` on FAIL — so it drops straight into CI.
+Exit code is `0` on PASS, `1` on FAIL — so it drops straight into CI. That holds **in every output
+mode**, `--json` included, and `2` is reserved for a path that does not exist, so a mistyped argument
+can never be read as either verdict.
+
+> Until v0.8 `--json` exited `0` whatever the verdict, so a CI wired up the way this README recommends
+> was green forever. The contract above was already written here; the code did not keep it.
 
 ## The six domains
 
