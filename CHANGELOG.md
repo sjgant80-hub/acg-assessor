@@ -3,6 +3,41 @@
 The changelog says *why*, not just what. When a criterion changes because it met a real codebase and
 lost, the entry names the failure that caused it.
 
+## assessor-v0.9
+
+Two criteria could not be satisfied by whole classes of repository — not for anything about their
+code, but for the forge they use and the language they are written in. Criteria text is unchanged, so
+the fingerprint is stable; **results move**, so the version is bumped.
+
+**⚑ Five declared detectors were unreachable, and one of them gated the badge.** The file walk skipped
+every dot-named entry except `.github`. The detectors, meanwhile, explicitly named `.gitlab-ci.yml`,
+`.travis.yml`, `.circleci/config.yml`, `.cursorrules` and `.aider.conf.yml` — files that could never
+appear in the list they were matched against. So a GitLab project running a full pipeline scored *no
+CI* (VER-04), and had an empty CI text for **VER-06, which is core** — meaning it **could not earn the
+badge at any level of real verification**. A Cursor or Aider user's committed configuration was
+invisible to BND-01. The walk now keeps an explicit `DOT_KEEP` set of the dot-named entries the
+criteria ask about.
+
+**⚑ And the two CI checks disagreed with each other.** VER-04 asked "is there CI?" by *filename*;
+VER-06 asked "does CI run the tests?" by *path*. CircleCI's file is `.circleci/config.yml` — a generic
+name in a specific directory — so it answered **no** to the first and **yes** to the second. There is
+now one `isCIConfig` predicate, used by both. Two lists that are meant to mean the same thing are one
+bug waiting for the case that separates them.
+
+**⚑ Python's `assert` was not counted as an assertion.** The pattern required a `(` or `.` after the
+word, which idiomatic Python never has, while `def test_` *was* counted as a test case. So a genuine
+Python suite read as cases-with-no-assertions and failed **VER-07, also core** — for being written in
+Python. The statement form is now matched, anchored to the start of a line so that `import assert
+from …` and `const assert = require(…)` still do not count: importing an assertion library is not
+making an assertion.
+
+19 new tests covering what the assessor recognises — licence spellings, lockfiles per ecosystem,
+agent configs per tool, spec-by-directory-or-name, ancestor directories in the path set, links inside
+code fences, link decoration, per-language test and assertion counting, the root `test.mjs`
+convention, object-form authors, sorted dependencies, and a malformed manifest not halting the run.
+
+113 tests total.
+
 ## assessor-v0.8
 
 Three fixes, all found by walking the assessor's own lines with a mutation gate rather than by

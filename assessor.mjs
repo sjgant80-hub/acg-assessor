@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.8';
+const SPEC_VERSION = 'assessor-v0.9';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -51,6 +51,24 @@ const TELLS = {
 // rel paths are normalised to forward slashes so criteria match on any OS.
 // ---------------------------------------------------------------------------
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', 'vendor']);
+
+// ⚑ Dot-named entries are skipped — they are overwhelmingly local state rather than committed intent.
+// These are the exceptions: the ones criteria explicitly ask about. Until v0.9 the only exception was
+// `.github`, which made five declared detectors UNREACHABLE — the code named GitLab, Travis, CircleCI,
+// Cursor and Aider, and could never see any of them. A GitLab project running a full pipeline scored
+// "no CI", and since VER-06 is core it could not earn the badge for any amount of real verification.
+// A criterion that cannot be satisfied by a whole class of repository is not a standard, it is a bug.
+const DOT_KEEP = new Set(['.github', '.gitlab-ci.yml', '.travis.yml', '.circleci', '.cursorrules', '.aider.conf.yml']);
+
+// ⚑ ONE definition of "this file is a CI configuration", because there were two and they disagreed.
+// VER-04 asked "is there CI?" by FILENAME and VER-06 asked "does CI run the tests?" by PATH, so a
+// CircleCI project — whose file is `.circleci/config.yml`, a generic name in a specific directory —
+// answered no to the first and yes to the second. Two lists that are supposed to mean the same thing
+// are one bug waiting for the case that separates them.
+const isCIConfig = f =>
+  /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$/i.test(f.rel) ||
+  /(^|\/)\.circleci\/config\.ya?ml$/i.test(f.rel) ||
+  /^(\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|jenkinsfile|\.travis\.ya?ml)$/i.test(f.name);
 const CODE_EXT  = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.go', '.rs', '.java', '.rb']);
 const DOC_EXT   = new Set(['.md', '.markdown', '.mdx', '.rst', '.adoc', '.txt']);
 
@@ -111,7 +129,7 @@ function walk(dir, root, ignore, out = []) {
   let entries;
   try { entries = readdirSync(dir); } catch { return out; }
   for (const name of entries.sort()) {                 // sorted -> deterministic
-    if (name.startsWith('.') && name !== '.github') continue;
+    if (name.startsWith('.') && !DOT_KEEP.has(name.toLowerCase())) continue;
     const full = join(dir, name);
     const rel = relative(root, full).replace(/\\/g, '/');   // forward slashes on every OS
     if (ignored(rel, ignore)) continue;
@@ -145,7 +163,7 @@ function gather(root) {
     totalLines: 0, todos: [], skips: [], longFns: [], dupes: [],
     hasLicense: files.some(f => /^licen[cs]e/i.test(f.name)),
     hasReadme:  files.some(f => /^readme/i.test(f.name)),
-    hasCI:      files.some(f => /\.github\/workflows\//.test(f.rel) || /^\.?(gitlab-ci|travis|circleci)/i.test(f.name)),
+    hasCI:      files.some(isCIConfig),
     hasLock:    files.some(f => /^(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Cargo\.lock|go\.sum)$/.test(f.name)),
     hasPkg:     files.some(f => f.name === 'package.json'),
     hasSpec:    files.some(f => /^(spec|SPEC|design|DESIGN|adr|ADR|rfc|RFC)/.test(f.name) || /\/(docs?|adr|rfc)\//i.test(f.rel)),
@@ -182,7 +200,7 @@ function gather(root) {
 
   // CI command text (VER-06) — concat of CI config contents, sorted-file order = deterministic
   ev.ciText = files
-    .filter(f => /\.github\/workflows\/.*\.ya?ml$/i.test(f.rel) || /\.circleci\/config\.yml$/i.test(f.rel) || /^(\.gitlab-ci\.yml|azure-pipelines\.yml|Jenkinsfile|\.travis\.yml)$/i.test(f.name))
+    .filter(isCIConfig)
     .map(read).join('\n');
 
   // assertion + test-case counts (VER-07) — `require` deliberately excluded from the assertion set
@@ -190,7 +208,12 @@ function gather(root) {
   for (const f of tests) {
     const t = read(f);
     ev.testCases  += (t.match(/\b(it|test|specify)\s*\(|^\s*def\s+test_|@Test\b|func\s+Test[A-Z]/gm) || []).length;
-    ev.assertions += (t.match(/\b(expect|assert\w*)\s*[(.]|\.should\b|\bt\.(Error|Fatal|Errorf|Fatalf)\b/g) || []).length;
+    // ⚑ The second alternative is Python's assert STATEMENT, which takes no bracket and no dot —
+    // `assert compute() == 3`. Without it the tool counted `def test_` as a case and found no
+    // assertion to match it, so an ordinary Python suite failed VER-07, a CORE criterion, for being
+    // written in Python. It is anchored to the start of a line so that `import assert from …` and
+    // `const assert = require(…)` are still not assertions: importing the library is not using it.
+    ev.assertions += (t.match(/\b(expect|assert\w*)\s*[(.]|^[ \t]*assert\s+\S|\.should\b|\bt\.(Error|Fatal|Errorf|Fatalf)\b/gm) || []).length;
   }
 
   // decision records + their Status (SPEC-04)
