@@ -162,6 +162,37 @@ test('a manifest description is read as the description', () => {
     'and a description that is not text is no description at all, rather than an object to match against');
 });
 
+test('⚑ a TWO-line block that appears once is not duplication either', () => {
+  // The two-line scan carries its own copy of "more than one occurrence". Reporting singles makes
+  // ev.dupes a list of every pair of lines in the repository, and EVO-01's evidence then announces a
+  // count of "blocks appearing exactly twice" that is really just the size of the codebase.
+  const files = { ...CLEAN, 'src/unique.mjs': ['const somethingParticular = { a: 1 };', 'const anotherThingEntirely = [2, 3];', 'export const u = 1;'].join('\n') };
+  const ev = scan(files);
+  assert.equal(ev.dupes.length, 0, 'nothing here repeats, so nothing is listed');
+  assert.match(verdictOf('EVO-01', files).evidence, /0 appear exactly twice/,
+    '⚑ and the evidence says none — a number that counts single occurrences is not a duplication count');
+});
+
+test('⚑ the two-line duplication list is ordered worst-first', () => {
+  // Same shape as the eight-line list, and a separate copy of the same sort. The two block bodies
+  // are picked so their hashes run OPPOSITE to their counts — with arbitrary contents the two orders
+  // agree half the time and the case passes by luck.
+  const pair = (t) => `const ${t}Config = { retries: 3, timeout: 1000 };\nconst ${t}Client = createClient(${t}Config);`;
+  const ev = scan({
+    ...CLEAN,
+    'src/a1.mjs': `${pair('alpha')}\nexport const a1 = 1;`,
+    'src/a2.mjs': `${pair('alpha')}\nexport const a2 = 2;`,
+    'src/a3.mjs': `${pair('alpha')}\nexport const a3 = 3;`,
+    'src/b1.mjs': `${pair('bravo')}\nexport const b1 = 1;`,
+    'src/b2.mjs': `${pair('bravo')}\nexport const b2 = 2;`,
+  });
+  assert.ok(ev.dupes.length >= 2, `precondition: two distinct repeated pairs, saw ${ev.dupes.length}`);
+  assert.equal(ev.dupes[0].count, 3,
+    '⚑ the pair repeated three times comes first, whatever its hash happens to be — the list is capped, so its order decides what a reader ever sees');
+  const counts = ev.dupes.map(d => d.count);
+  assert.deepEqual(counts, [...counts].sort((a, b) => b - a), 'and the whole list runs commonest-first');
+});
+
 test('⚑ a block that appears once is not duplication', () => {
   // "appears in two or more places" means two. Counting single occurrences makes every eight
   // consecutive lines in the codebase its own finding — the criterion stops meaning anything and
