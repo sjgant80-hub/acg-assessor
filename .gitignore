@@ -7,4 +7,9 @@ node_modules/
 # `git add -A` during a run — a 765-line copy of the assessor, tracked in the repository, which is
 # both noise and a large block of duplicate code the rubric would count. Never again by accident.
 *.witnessbak
-witness.*.baseline.json
+
+# ⚑ The BASELINE is not an artefact and must be committed. It is the reviewed, signed-off judgement
+# that a mutant is genuinely equivalent — the only thing standing between an exemption and an
+# excuse. Ignoring it made the gate pass on my machine, where the file exists, and report a survivor
+# on the runner, where it never arrived. A verdict that depends on an untracked file is not a
+# verdict anybody else can reproduce, which is the whole point of running it somewhere I do not own.

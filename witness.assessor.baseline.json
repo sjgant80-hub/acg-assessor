@@ -1,0 +1,7 @@
+[
+  {
+    "mutation": "< → <=",
+    "snippet": "for (let i = 1; i < parts.length; i++) ev.pathSet.add(parts.slice(0, i).join('/'));",
+    "reason": "The loop adds every ANCESTOR of a path to pathSet; the path itself is added on the line above. Running one step further adds parts.slice(0, parts.length).join(\"/\"), which IS that same path. pathSet is a Set, so re-adding a member it already holds changes nothing that any criterion can read. Not unkillable-in-practice — unkillable in principle."
+  }
+]
