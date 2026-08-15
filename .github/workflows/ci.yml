@@ -24,3 +24,35 @@ jobs:
         run: npm test
       - name: the assessor passes its own rubric
         run: node assessor.mjs .
+
+      # ⚑ THE MUTATION GATE. Deliberately absent until today: the gate did not pass, and a CI step
+      # that reports a failure as anything else is the test-theatre this repository exists to measure.
+      # 23 of 144 mutants were killed when this began; it is 143 with one reviewed-equivalent now.
+      #
+      # ⚑ --test is UNQUOTED. witness takes everything after it as the argv of the test command.
+      # Quoted, bash passes ONE word, witness execs a binary with that literal name, gets ENOENT, and
+      # status===null — which its scorer reads as "not zero", i.e. KILLED. Every mutant dies and the
+      # gate reports a perfect score having run nothing. That exact mistake shipped in a sibling repo
+      # this morning and only Windows (shell:true) hid it.
+      #
+      # ⚑ And --timeout, because the default 20s bound is under this suite's honest runtime. A run
+      # that times out is also counted KILLED, so a suite slower than the bound scores 100% for the
+      # same reason. Both failures look identical to success.
+      - name: witness — try to break the tests
+        run: |
+          git clone --depth 1 --branch v0.2 https://github.com/sjgant80-hub/witness.git /tmp/witness
+          node /tmp/witness/witness.mjs mutate assessor.mjs \
+            --cap 400 --baseline witness.assessor.baseline.json \
+            --test node scripts/run-tests.mjs | tee gate.out
+
+      # ⚑ witness EXITS 0 EVEN WHEN MUTANTS SURVIVE — it prints "✗ n SURVIVED" and returns zero.
+      # Without this step the gate above is decoration.
+      - name: refuse anything short of clean
+        run: |
+          node -e "
+            const out = require('fs').readFileSync('gate.out','utf8');
+            const all = [...out.matchAll(/\"clean\":\s*(true|false)/g)].map(m => m[1]);
+            if (all.length !== 1) { console.error('expected 1 gate verdict, saw ' + all.length); process.exit(1); }
+            if (all[0] !== 'true') { console.error('mutants survived — those lines are test-theatre'); process.exit(1); }
+            console.log('gate clean');
+          "
