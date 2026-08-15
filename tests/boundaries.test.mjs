@@ -15,7 +15,12 @@ import { fixtures } from './helpers.mjs';
 const { mk, scan } = fixtures();
 // assess().results, not verdict.results: the published verdict carries the evidence sentence, while
 // the full result also carries the sample naming each offending item — which is what a finding is for.
-const verdictOf = (id, files, opts = { git: true }) => assess(mk(files, opts)).results.find(r => r.id === id);
+//
+// ⚑ No git by default. Building a repository with real history costs five git subprocesses, and only
+// the provenance criteria read any of it — every case in this file except the tracked-file boundary
+// is asking about something else entirely. Paying for history in all of them pushed the suite past
+// the mutation gate's per-run timeout, at which point the gate cannot run at all.
+const verdictOf = (id, files, opts = {}) => assess(mk(files, opts)).results.find(r => r.id === id);
 const lines = (n, prefix = 'export const v') => Array.from({ length: n }, (_, i) => `${prefix}${i} = ${i};`).join('\n');
 
 test('⚑ a test-to-source ratio exactly on the line is met', () => {
@@ -55,12 +60,12 @@ test('⚑ a repository of exactly four tracked files is big enough to expect his
   // PRV-03 declines a repository of three files or fewer as too small to expect more than one commit.
   const four = { 'README.md': '# A tool\n\nIt does a real thing, described at length.\n', 'LICENSE': 'MIT\n',
     'src/index.mjs': 'export const a = 1;\n', 'src/other.mjs': 'export const b = 2;\n' };
-  const r = verdictOf('PRV-03', four);
+  const r = verdictOf('PRV-03', four, { git: true });
   assert.notEqual(r.verdict, 'N/A',
     `⚑ four tracked files is more than three, so the criterion applies. Evidence: ${r.evidence}`);
 
   const three = { 'README.md': '# A tool\n\nIt does a real thing.\n', 'LICENSE': 'MIT\n', 'src/index.mjs': 'export const a = 1;\n' };
-  assert.equal(verdictOf('PRV-03', three).verdict, 'N/A', 'while three is genuinely too small to read anything into');
+  assert.equal(verdictOf('PRV-03', three, { git: true }).verdict, 'N/A', 'while three is genuinely too small to read anything into');
 });
 
 test('⚑ a line of thirteen characters is long enough to count as duplication', () => {

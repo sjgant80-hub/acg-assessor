@@ -159,7 +159,7 @@ test('⚑ every kind of link that leaves the repository is left alone', () => {
     '[scheme](ftp://files.example.com/thing.zip)',
     '[protocol-relative](//cdn.example.com/lib.js)',
   ];
-  const v = assess(mk({ ...CLEAN, 'README.md': `# A tool\n\nIt does a real thing.\n\n${links.join('\n\n')}\n` }, { git: true })).verdict;
+  const v = assess(mk({ ...CLEAN, 'README.md': `# A tool\n\nIt does a real thing.\n\n${links.join('\n\n')}\n` })).verdict;
   const spec03 = v.results.find(r => r.id === 'SPEC-03');
   assert.equal(spec03.verdict, 'MET',
     `⚑ none of these is a path this repository could contain — reporting them as dead links would make every README with a mailto or a CDN reference fail. Evidence said: ${spec03.evidence}`);
@@ -168,7 +168,7 @@ test('⚑ every kind of link that leaves the repository is left alone', () => {
 test('and a relative link that really is dead is still caught, and named', () => {
   // Read from assess().results rather than verdict.results: the published verdict carries the
   // evidence sentence, the full result carries the sample that names each offending target.
-  const { results } = assess(mk({ ...CLEAN, 'README.md': '# A tool\n\nIt does a real thing. See [the guide](docs/nowhere.md).\n' }, { git: true }));
+  const { results } = assess(mk({ ...CLEAN, 'README.md': '# A tool\n\nIt does a real thing. See [the guide](docs/nowhere.md).\n' }));
   const spec03 = results.find(r => r.id === 'SPEC-03');
   assert.equal(spec03.verdict, 'NOT_MET', 'the guard must not have been widened into an excuse for everything');
   assert.match(JSON.stringify(spec03.sample || []), /nowhere\.md/,
@@ -179,25 +179,34 @@ test('a link with an anchor or a query resolves on the path part', () => {
   const v = assess(mk({
     ...CLEAN,
     'README.md': '# A tool\n\nIt does a real thing. See [design](docs/design.md#the-middle) and [again](docs/design.md?plain=1).\n',
-  }, { git: true })).verdict;
+  })).verdict;
   assert.equal(v.results.find(r => r.id === 'SPEC-03').verdict, 'MET',
     'the fragment and the query are not part of the filename, and a repository should not fail for deep-linking its own documentation');
 });
 
+// Memoised for the same reason as in verdict.test.mjs: the same command is asked several questions,
+// and this tool's whole claim is that the same input gives the same output.
+const cliCache = new Map();
 const runCLI = (dir, args = []) => {
-  try { return execFileSync(process.execPath, [CLI, dir, ...args], { encoding: 'utf8' }).replace(/\x1b\[[0-9;]*m/g, ''); }
-  catch (e) { return ((e.stdout || '') + (e.stderr || '')).replace(/\x1b\[[0-9;]*m/g, ''); }
+  const key = JSON.stringify([dir, args]);
+  if (!cliCache.has(key)) {
+    let out;
+    try { out = execFileSync(process.execPath, [CLI, dir, ...args], { encoding: 'utf8' }); }
+    catch (e) { out = (e.stdout || '') + (e.stderr || ''); }
+    cliCache.set(key, out.replace(/\x1b\[[0-9;]*m/g, ''));
+  }
+  return cliCache.get(key);
 };
 
 test('⚑ each verdict prints as its own mark, and the marks are distinct', () => {
   // The reader scans the left column. If two of the three verdicts render alike, a failure and a
   // not-applicable look the same at a glance, and the report is worse than a bare number.
   const files = { ...CLEAN, 'package.json': CLEAN['package.json'].replace('"main": "./src/index.mjs"', '"main": "./src/gone.mjs"') };
-  const { results } = assess(mk(files, { git: true }));
+  const { results } = assess(mk(files));
   for (const want of ['MET', 'NOT_MET', 'N/A']) {
     assert.ok(results.some(r => r.verdict === want), `precondition: the fixture produces at least one ${want}`);
   }
-  const plain = runCLI(mk(files, { git: true }));
+  const plain = runCLI(mk(files));
   assert.match(plain, /\bMET\b/, 'a met criterion is marked met');
   assert.match(plain, /✗ FAIL/, 'a failed one is marked failed');
   assert.match(plain, /\bn\/a\b/, 'and a not-applicable one is marked n/a');
@@ -210,8 +219,8 @@ test('⚑ each verdict prints as its own mark, and the marks are distinct', () =
 });
 
 test('⚑ each domain heading is printed once, above its own criteria', () => {
-  const plain = runCLI(mk(CLEAN, { git: true }));
-  const { results } = assess(mk(CLEAN, { git: true }));
+  const plain = runCLI(mk(CLEAN));
+  const { results } = assess(mk(CLEAN));
   for (const domain of new Set(results.map(r => r.domain))) {
     const heading = domain.toUpperCase();
     const count = plain.split('\n').filter(l => l.trim() === heading).length;
@@ -221,17 +230,17 @@ test('⚑ each domain heading is printed once, above its own criteria', () => {
 });
 
 test('⚑ the core summary says all met only when they all are', () => {
-  const good = runCLI(mk(CLEAN, { git: true }));
+  const good = runCLI(mk(CLEAN));
   assert.match(good, /core criteria\s+(\d+)\/\1\s+all met/, 'a repository meeting every core criterion is told so');
   assert.ok(!/not all met/.test(good), 'and not told the opposite in the same breath');
 
-  const bad = runCLI(mk({ ...CLEAN, 'package.json': CLEAN['package.json'].replace('"main": "./src/index.mjs"', '"main": "./src/gone.mjs"') }, { git: true }));
+  const bad = runCLI(mk({ ...CLEAN, 'package.json': CLEAN['package.json'].replace('"main": "./src/index.mjs"', '"main": "./src/gone.mjs"') }));
   assert.match(bad, /core criteria\s+\d+\/\d+\s+not all met/,
     '⚑ and one short of the full set is "not all met" — this line is the one a reader checks first');
 });
 
 test('⚑ the report prints the finding, not the word undefined', () => {
-  const dir = mk({ ...CLEAN, 'src/marked.mjs': [...LEAD, `// ${TAG}: finish this thing`, 'export const c = 3;'].join('\n') }, { git: true });
+  const dir = mk({ ...CLEAN, 'src/marked.mjs': [...LEAD, `// ${TAG}: finish this thing`, 'export const c = 3;'].join('\n') });
   let out;
   try { out = execFileSync(process.execPath, [CLI, dir], { encoding: 'utf8' }); }
   catch (e) { out = e.stdout || ''; }

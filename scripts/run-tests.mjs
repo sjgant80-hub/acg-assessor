@@ -33,6 +33,12 @@ const FILES = [
   'tests/boundaries.test.mjs',
 ];
 
+// ⚑ Invoke node directly, and let the gate invoke THIS file directly rather than through `npm test`.
+// Every layer in between is another process that survives when a run is killed on timeout. Going
+// through npm made the chain shell → npm → node → node --test → one child per test file; a single
+// timeout orphaned the lot, the orphans slowed the next run enough to time out too, and a gate that
+// should finish in half an hour was still crawling after eight and a half hours with 77 node
+// processes alive. Depth of the process tree is a correctness property here, not tidiness.
 const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...FILES], { encoding: 'utf8' });
 process.stdout.write(r.stdout || '');
 process.stderr.write(r.stderr || '');

@@ -141,12 +141,25 @@ test('⚑ SPEC.md describes the criteria the program actually applies', () => {
 
 // --- the command line -------------------------------------------------------
 
+/* Spawning the CLI costs a process start plus a full walk of the fixture, and the same command is
+   asked about by several tests — "did it exit right", "did it print the hash", "did it name what
+   failed". Running it once per distinct command and sharing the result is safe precisely because
+   this tool's central claim is that the same input gives the same output; if that ever stopped being
+   true, the determinism tests above would fail first. It is also most of why the suite fits inside
+   the mutation gate's per-run timeout. */
+const cliCache = new Map();
 const run = (args, opts = {}) => {
-  try {
-    return { code: 0, out: execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', ...opts }) };
-  } catch (e) {
-    return { code: e.status, out: (e.stdout || '') + (e.stderr || '') };
+  const key = JSON.stringify(args);
+  if (!cliCache.has(key)) {
+    let result;
+    try {
+      result = { code: 0, out: execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', ...opts }) };
+    } catch (e) {
+      result = { code: e.status, out: (e.stdout || '') + (e.stderr || '') };
+    }
+    cliCache.set(key, result);
   }
+  return cliCache.get(key);
 };
 
 test('⚑ the CLI exit code is the verdict — in every output mode', () => {
