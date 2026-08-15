@@ -125,11 +125,52 @@ test('⚑ the worst duplication is reported first, and the cap keeps the worst',
   assert.deepEqual(counts, [...counts].sort((a, b) => b - a), 'and the whole list is ordered that way');
 });
 
-test('a block that appears once is not duplication', () => {
+test('⚑ a block repeated EXACTLY twice is not "repeated more than twice"', () => {
+  // EVO-01's own words. Two copies is where a second implementation legitimately exists; three is
+  // where a pattern is being regenerated. Moving the line to two fails an enormous number of
+  // ordinary repositories for having a pair of similar functions.
+  const pair = 'const configuration = { retries: 3, timeout: 1000 };\nconst client = createClient(configuration);';
+  const twice = { ...CLEAN, 'src/a.mjs': `${pair}\nexport const a = 1;`, 'src/b.mjs': `${pair}\nexport const b = 2;` };
+  const ev = scan(twice);
+  assert.ok(ev.dupes.some(d => d.count === 2), 'precondition: the block really does appear twice');
+  assert.equal(verdictOf('EVO-01', twice).verdict, 'MET', 'twice is allowed');
+
+  const thrice = { ...twice, 'src/c.mjs': `${pair}\nexport const c = 3;` };
+  assert.equal(verdictOf('EVO-01', thrice).verdict, 'NOT_MET', 'three times is not');
+});
+
+test('⚑ exactly a quarter of commits being throwaway is NOT under a quarter', () => {
+  // PRV-05 asks for FEWER than one in four. One in four is not fewer than one in four.
+  const at = { git: true, commits: ['add the parser', 'wip', 'handle the empty case', 'document the rule'] };
+  assert.equal(verdictOf('PRV-05', CLEAN, at).verdict, 'NOT_MET',
+    '⚑ 1/4 sits exactly on the published line, and the line says "fewer than"');
+
+  const under = { git: true, commits: ['add the parser', 'wip', 'handle the empty case', 'document the rule', 'name the boundary'] };
+  assert.equal(verdictOf('PRV-05', CLEAN, under).verdict, 'MET', 'while 1/5 is genuinely under it');
+});
+
+test('a manifest description is read as the description', () => {
+  const pkg = JSON.parse(CLEAN['package.json']);
+  pkg.description = 'a real description of a real thing';
+  const ev = scan({ ...CLEAN, 'package.json': JSON.stringify(pkg, null, 2) });
+  assert.equal(ev.pkgDescription, 'a real description of a real thing',
+    'ACC-04 judges this text for placeholder wording — reading anything else judges the wrong thing');
+
+  const odd = JSON.parse(CLEAN['package.json']);
+  odd.description = { text: 'not a string' };
+  assert.equal(scan({ ...CLEAN, 'package.json': JSON.stringify(odd, null, 2) }).pkgDescription, null,
+    'and a description that is not text is no description at all, rather than an object to match against');
+});
+
+test('⚑ a block that appears once is not duplication', () => {
+  // "appears in two or more places" means two. Counting single occurrences makes every eight
+  // consecutive lines in the codebase its own finding — the criterion stops meaning anything and
+  // starts reporting the size of the repository.
   const block = Array.from({ length: 8 }, (_, i) => `const solitary${i} = ${i};`).join('\n');
   const ev = scan({ ...CLEAN, 'src/only.mjs': `${block}\nexport const a = 1;` });
-  assert.equal(ev.longDupes.length, 0,
-    '⚑ "appears in two or more places" means two. Reporting a block that appears once would make every file its own finding');
+  assert.equal(ev.longDupes.length, 0, 'nothing here appears twice, so nothing is reported');
+  assert.equal(verdictOf('EVO-03', { ...CLEAN, 'src/only.mjs': `${block}\nexport const a = 1;` }).verdict, 'MET',
+    '⚑ and the criterion says so — a repository of entirely unique code must not fail the criterion for repeated code');
 });
 
 test('⚑ blank and comment lines are not part of an eight-line code block', () => {

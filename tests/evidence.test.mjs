@@ -216,6 +216,21 @@ test('⚑ each verdict prints as its own mark, and the marks are distinct', () =
   assert.ok(failLines.length > 0 && naLines.length > 0, 'both appear on criterion lines');
   assert.equal(failLines.filter(l => /\bn\/a\b/.test(l)).length, 0,
     '⚑ and no line carries two marks — a failure rendered as anything but a failure is the whole problem this tool measures');
+
+  // ⚑ Every criterion must carry ITS OWN verdict's mark. Checking only that all three marks appear
+  // somewhere lets the marks be attached to the wrong criteria — the report stays colourful and
+  // tells the reader the opposite of the truth about which rules this repository broke.
+  const WANT = { MET: 'MET', NOT_MET: '✗ FAIL', 'N/A': 'n/a' };
+  const lines = plain.split('\n');
+  for (const r of results) {
+    // Only a criterion line: it opens with the mark and then the id. Matching anywhere the id
+    // appears picks up the n/a justification of a DIFFERENT criterion that happens to name it.
+    const line = lines.find(l => new RegExp(`^\\s*(✗ FAIL|MET|n/a)\\s+${r.id}\\b`).test(l));
+    assert.ok(line, `${r.id} has a line of its own in the report`);
+    const mark = (line.match(/^\s*(✗ FAIL|MET|n\/a)/) || [])[1];
+    assert.equal(mark, WANT[r.verdict],
+      `${r.id} is ${r.verdict} and must be marked "${WANT[r.verdict]}", saw "${mark}"`);
+  }
 });
 
 test('⚑ each domain heading is printed once, above its own criteria', () => {
