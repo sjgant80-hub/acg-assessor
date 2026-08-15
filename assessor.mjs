@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto';
 // meaningful relative to a stated spec version. Enforced by spec-lock.json +
 // scripts/check-spec-version.mjs (the REV-03 fix).
 // ---------------------------------------------------------------------------
-const SPEC_VERSION = 'assessor-v0.9';
+const SPEC_VERSION = 'assessor-v0.10';
 const DEFAULT_THRESHOLD = 0.70;   // published. non-core criteria proportion required.
 
 const MET = 'MET', NOT_MET = 'NOT_MET', NA = 'N/A';
@@ -653,9 +653,16 @@ const CRITERIA = [
     id: 'PRV-02', domain: 'provenance', core: false, tell: 'INERT',
     criterion: 'The repository is under version control with history present.',
     why: 'Commit history is the only record of who decided what and when. A repository initialised in one commit has erased its own provenance.',
-    assess: ev => existsSync(join(ev.root, '.git'))
-      ? { verdict: MET, evidence: '.git present' }
-      : { verdict: NOT_MET, evidence: 'no .git directory — history unavailable', note: 'N/A if assessing an exported archive; assessor must justify' }
+    // ⛑ "History present" is a claim about HISTORY, and this decided it from a PATH EXISTING. A
+    // directory named .git that git cannot read — a broken clone, an interrupted fetch, an empty
+    // `mkdir .git` — satisfied a criterion whose own text says history is present. The real check is
+    // already in this file: gitData() runs rev-parse and rev-list and sets ev.git.ok, and PRV-03,
+    // PRV-05 and ACC-05 all consult it. Only this one asked the filesystem instead.
+    assess: ev => ev.git?.ok
+      ? { verdict: MET, evidence: `${ev.git.commitCount} commit(s) readable from HEAD` }
+      : existsSync(join(ev.root, '.git'))
+        ? { verdict: NOT_MET, evidence: 'a .git directory is present but git cannot read history from it' }
+        : { verdict: NOT_MET, evidence: 'no .git directory — history unavailable', note: 'N/A if assessing an exported archive; assessor must justify' }
   },
   {
     id: 'PRV-03', domain: 'provenance', core: true, tell: 'ECHOED',

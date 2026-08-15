@@ -218,13 +218,28 @@ test('PRV-01 · a lockfile where one is expected', () => {
   assert.equal(v('PRV-01', { deps: ['x'], hasLock: false }), 'NOT_MET');
 });
 
-test('PRV-02 · a .git directory, checked on the real filesystem', () => {
+test('⚑ PRV-02 · history means git could READ history, not that a folder is named .git', () => {
+  // This test used to assert the defect: it made an empty directory called .git and expected MET.
+  // The criterion's own text is "under version control with history present", and a bare mkdir has
+  // no history in it — nor does a broken clone or an interrupted fetch. The real verifier, gitData(),
+  // was already in the file and consulted by PRV-03, PRV-05 and ACC-05. Only this one asked the
+  // filesystem, so the one criterion actually named after history was the one not checking for any.
   const dir = mkdtempSync(join(tmpdir(), 'acg-'));
+  const noGit = { ...BASE, git: { ok: false }, root: dir };
   try {
-    assert.equal(by('PRV-02').assess({ ...BASE, root: dir }).verdict, 'NOT_MET', 'no .git is no history');
+    assert.equal(by('PRV-02').assess(noGit).verdict, 'NOT_MET', 'no .git at all is no history');
+
     mkdirSync(join(dir, '.git'));
-    assert.equal(by('PRV-02').assess({ ...BASE, root: dir }).verdict, 'MET');
+    const hollow = by('PRV-02').assess(noGit);
+    assert.equal(hollow.verdict, 'NOT_MET',
+      '⚑ a directory named .git that git cannot read is still not history — this is the case that used to pass');
+    assert.match(hollow.evidence, /cannot read history/,
+      'and the evidence separates the two, so the reader knows whether to clone again or to stop worrying');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+
+  const real = by('PRV-02').assess({ ...BASE, git: { ok: true, commitCount: 7 }, root: dir });
+  assert.equal(real.verdict, 'MET', 'and readable history passes');
+  assert.match(real.evidence, /7 commit\(s\)/, 'evidenced by the history itself');
 });
 
 test('PRV-03 · more than one commit, for a repository big enough to have needed one', () => {

@@ -345,3 +345,20 @@ test('⚑ author identity survives a commit line with a missing half', () => {
       '⚑ and neither is empty for a properly configured commit — an empty identity matches no placeholder and would pass the criterion by erasing the evidence');
   }
 });
+
+test('⚑ "history present" means git can read history, not that a path called .git exists', () => {
+  // PRV-02's own text says history is present. It decided that from existsSync('.git'), so a broken
+  // clone, an interrupted fetch or a bare `mkdir .git` satisfied it. The real verifier — gitData(),
+  // which PRV-03, PRV-05 and ACC-05 all consult — was sitting in the same file unused.
+  const real = verdictOf('PRV-02', CLEAN, { git: true });
+  assert.equal(real.verdict, 'MET', 'a repository with commits passes');
+  assert.match(real.evidence, /commit\(s\) readable/, 'and the evidence is the history, not the folder');
+
+  const hollow = verdictOf('PRV-02', { ...CLEAN, '.git/nothing-here': 'not a repository\n' });
+  assert.equal(hollow.verdict, 'NOT_MET',
+    '⚑ a directory named .git that git cannot read is not history — this is the case that used to pass');
+  assert.match(hollow.evidence, /cannot read history/, 'and it says exactly that, so the reader knows which of the two it is');
+
+  const none = verdictOf('PRV-02', CLEAN);
+  assert.equal(none.verdict, 'NOT_MET', 'and no .git at all is still reported as no .git');
+});

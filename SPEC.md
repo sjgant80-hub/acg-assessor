@@ -80,7 +80,7 @@ the verdict reports the **dominant tell** — the failure mode that dominates th
 
 <!-- BEGIN GENERATED CRITERIA · edit assessor.mjs, then run scripts/sync-spec.mjs -->
 
-**27 criteria** · 11 core (marked ●) · spec `assessor-v0.9`.
+**27 criteria** · 11 core (marked ●) · spec `assessor-v0.10`.
 
 This section is generated from the criteria the assessor actually applies. It is not a
 description of the program — it is the program's own list, rendered. Each entry carries the
