@@ -1,0 +1,7 @@
+[
+  {
+    "mutation": "< → <=",
+    "snippet": "for (let i = 1; i < parts.length; i++) ev.pathSet.add(parts.slice(0, i).join('/'));",
+    "reason": "equivalent by construction: i = parts.length would add parts.slice(0, length) — the full rel path — which line 181 already added to the same Set, and a Set dedupes. No observable difference exists for any input."
+  }
+]

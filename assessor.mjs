@@ -243,7 +243,12 @@ function gather(root) {
   if (mkFile) for (const m of read(mkFile).matchAll(/^([A-Za-z0-9][A-Za-z0-9:_-]*)\s*:/gm)) if (m[1].toLowerCase() !== '.phony') ev.makeTargets.add(m[1]);
 
   // package.json declared deps + ownership fields
-  const pkgFile = files.find(f => f.name === 'package.json');
+  // ⚑ THE ROOT MANIFEST, NEVER MERELY THE FIRST ONE FOUND. Matching by name let a nested manifest
+  // — a test fixture's, a vendored package's — shadow the repository's own, silently swapping the
+  // deps, the author, the description and every BND-03 entrypoint for somebody else's. The walk is
+  // alphabetical, so 'fixtures/...' beat 'package.json' and a repo failed its own core criterion on
+  // a path that belongs to a fixture. A repo's wiring is the manifest at its root, full stop.
+  const pkgFile = files.find(f => f.rel === 'package.json');
   if (pkgFile) {
     try {
       const pkg = JSON.parse(read(pkgFile));

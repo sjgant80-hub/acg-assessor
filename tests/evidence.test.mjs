@@ -267,3 +267,21 @@ test('⚑ the report prints the finding, not the word undefined', () => {
   assert.ok(!/undefined/.test(plain),
     '⚑ and nowhere in the report does the word "undefined" appear, which is what a broken fallback prints');
 });
+
+
+test('⚑ a NESTED fixture manifest never shadows the ROOT one', () => {
+  // The walk is alphabetical, so fixtures/<x>/package.json sorts before package.json — and matching
+  // the manifest by NAME handed the whole evidence block (deps, author, description, entrypoints)
+  // to a test fixture. konomify failed its own core criterion, BND-03, on a path that belonged to
+  // its fixture repo. A repository's wiring is the manifest at its ROOT, full stop.
+  const ev = scan({
+    ...CLEAN,
+    'fixtures/repo/package.json': '{ "name": "fx", "main": "main.mjs", "author": "Nobody Fixture", "dependencies": { "left-pad": "1.0.0" } }',
+    'fixtures/repo/main.mjs': 'export const x = 1;\n',
+  });
+  // the root CLEAN manifest wires ./src/index.mjs — the fixture's 'main.mjs' must not appear
+  assert.ok(!ev.manifestRefs.includes('main.mjs'),
+    'the fixture manifest was read as the repository manifest: refs = ' + ev.manifestRefs.join(', '));
+  assert.ok(!ev.deps.includes('left-pad'), 'the fixture manifest supplied the dependency list');
+  assert.notEqual(ev.pkgAuthor, 'Nobody Fixture', 'the fixture manifest supplied the author');
+});
