@@ -43,7 +43,8 @@ jobs:
           git clone --depth 1 --branch v0.2 https://github.com/sjgant80-hub/witness.git /tmp/witness
           node /tmp/witness/witness.mjs mutate assessor.mjs \
             --cap 400 --baseline witness.assessor.baseline.json \
-            --test node scripts/run-tests.mjs | tee gate.out
+            --test node scripts/run-tests.mjs | tee gate.out | tee verdict.txt
+          grep -q "no test-theatre" verdict.txt || { echo "::error::mutants survived"; exit 1; }
 
       # ⚑ witness EXITS 0 EVEN WHEN MUTANTS SURVIVE — it prints "✗ n SURVIVED" and returns zero.
       # Without this step the gate above is decoration.
